@@ -1,0 +1,453 @@
+﻿@page "/rcms"
+@inject OracleService oracleService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+
+@* --- CASCADING PARAMETER TO GET CURRENT USER --- *@
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@attribute [Authorize]
+
+
+@* --- MODIFIED: Main title and controls card --- *@
+<div class="card shadow-sm mb-4">
+    <div class="card-header">
+        <h3>RCM Master</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            @* --- NEW: Search functionality --- *@
+            <div class="col-md-8">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Search by RCM ID or Name..." @bind="searchTerm" @oninput="SearchInputChanged" />
+                    <button class="btn btn-outline-primary" @onclick="PerformSearch">
+                        <i class="bi bi-search"></i> Search
+                    </button>
+                </div>
+            </div>
+            @* --- MODIFIED: "Add" button moved and always enabled --- *@
+            <div class="col-md-4 text-end">
+                <button class="btn btn-success" @onclick="AddNewRcm">
+                    <i class="bi bi-plus-circle-fill me-2"></i>Add New RCM
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* --- MODIFIED: Data display card --- *@
+<div class="card shadow-sm">
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <div class="text-center p-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading RCMs...</p>
+            </div>
+        }
+        else if (rcms == null || !rcms.Any())
+        {
+            <div class="text-center p-4">
+                <i class="bi bi-info-circle" style="font-size: 3rem; color: #6c757d;"></i>
+                <h5 class="mt-3">No RCMs Found</h5>
+                <p class="text-muted">There are no RCMs that match your criteria. Try adjusting your search or add a new RCM.</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>RCM ID</th>
+                            <th>RCM Name</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rcm in rcms)
+                        {
+                            <tr>
+                                <td>@rcm.RcmId</td>
+                                <td>@rcm.RcmName</td>
+                                <td>
+                                    @* --- NEW: Status badge like on Verticals page --- *@
+                                    <span class="badge @(rcm.Status == "Active" ? "bg-success" : "bg-danger")">
+                                        @rcm.Status
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-primary btn-sm" @onclick="() => EditRcm(rcm)">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </button>
+                                    @* --- NEW: Activate/Deactivate button --- *@
+                                    @if (rcm.Status == "Active")
+                                    {
+                                        <button class="btn btn-sm btn-warning ms-2" @onclick="() => ToggleStatusAsync(rcm)">
+                                            <i class="bi bi-toggle-off"></i> Deactivate
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-success ms-2" @onclick="() => ToggleStatusAsync(rcm)">
+                                            <i class="bi bi-toggle-on"></i> Activate
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* --- NEW: Pagination component --- *@
+            <div class="mt-4">
+                <Pagination CurrentPage="@currentPage" TotalPages="@totalPages" OnPageChanged="OnPageChanged" />
+            </div>
+        }
+    </div>
+</div>
+
+
+<Modal @bind-IsOpen="isModalVisible" Title="@modalTitle" Size="Modal.ModalSize.ExtraLarge">
+    <Body>
+        <EditForm Model="@currentRcm" OnValidSubmit="SaveRcm" id="rcmForm">
+            <DataAnnotationsValidator />
+            <div class="mb-3">
+                <label class="form-label">RCM ID</label>
+                <InputText autocomplete="off" class="form-control" @bind-Value="currentRcm.RcmId" disabled="@isEditMode"></InputText>
+                <ValidationMessage For="@(() => currentRcm.RcmId)" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">RCM Name</label>
+                <InputText autocomplete="off" class="form-control" @bind-Value="currentRcm.RcmName"></InputText>
+                <ValidationMessage For="@(() => currentRcm.RcmName)" />
+            </div>
+
+            @if (isEditMode)
+            {
+                <hr />
+                <h5>Vertical Mappings</h5>
+                <div class="row mb-3">
+                    <div class="col-5">
+                        <label class="form-label">Available Verticals</label>
+                        <select class="form-select" multiple size="8" @ref="availableListBox">
+                            @foreach (var vertical in availableVerticals)
+                            {
+                                <option value="@vertical.VerticalId">@vertical.VerticalName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-2 d-flex flex-column justify-content-center align-items-center">
+                        <button type="button" class="btn btn-secondary mb-2" @onclick="MapSelected">&gt;&gt;</button>
+                        <button type="button" class="btn btn-secondary" @onclick="UnmapSelected">&lt;&lt;</button>
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label">Mapped Verticals</label>
+                        <select class="form-select" multiple size="8" @ref="mappedListBox">
+                            @foreach (var vertical in mappedVerticals)
+                            {
+                                <option value="@vertical.VerticalId">@vertical.VerticalName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <hr />
+                <h5>Consultant Mappings</h5>
+                @* This section remains unchanged *@
+                <div class="row">
+                    <div class="col-5">
+                        <label class="form-label">Available Consultants</label>
+                        <select class="form-select" multiple size="8" @ref="availableConsultantListBox">
+                            @foreach (var consultant in availableConsultants)
+                            {
+                                <option value="@consultant.SqNo">@consultant.ConsultantName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-2 d-flex flex-column justify-content-center align-items-center">
+                        <button type="button" class="btn btn-secondary mb-2" @onclick="MapConsultantSelected">&gt;&gt;</button>
+                        <button type="button" class="btn btn-secondary" @onclick="UnmapConsultantSelected">&lt;&lt;</button>
+                    </div>
+                    <div class="col-5">
+                        <label class="form-label">Mapped Consultants</label>
+                        <select class="form-select" multiple size="8" @ref="mappedConsultantListBox">
+                            @foreach (var consultant in mappedConsultants)
+                            {
+                                <option value="@consultant.SqNo">@consultant.ConsultantName</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="alert alert-info">Mappings for Verticals and Consultants can be configured after the RCM is created by editing it.</div>
+            }
+        </EditForm>
+    </Body>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        @* --- MODIFIED: Use a single Save button that triggers the form submission --- *@
+        <button type="submit" class="btn btn-primary" form="rcmForm">Save Changes</button>
+    </Footer>
+</Modal>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+    private string? currentUserId;
+
+    // --- MODIFIED: State for paginated RCM list ---
+    private List<RcmMaster>? rcms;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalRecords = 0;
+    private int totalPages => (int)Math.Ceiling(totalRecords / (double)pageSize);
+    private string searchTerm = string.Empty;
+
+    // --- MODIFIED: Removed vertical-specific state ---
+    private List<VerticalMaster>? allVerticals; // Still needed for the edit modal
+    private List<ConsultantMaster>? allConsultants;
+    private bool isLoading = true;
+
+    // --- Modal state (largely unchanged) ---
+    private bool isModalVisible = false;
+    private RcmMaster currentRcm = new();
+    private string modalTitle = "";
+    private bool isEditMode;
+
+    private List<VerticalMaster> availableVerticals = new();
+    private List<VerticalMaster> mappedVerticals = new();
+    private List<VerticalMaster> originalMappedVerticals = new();
+    private ElementReference availableListBox;
+    private ElementReference mappedListBox;
+
+    private List<ConsultantMaster> availableConsultants = new();
+    private List<ConsultantMaster> mappedConsultants = new();
+    private List<ConsultantMaster> originalMappedConsultants = new();
+    private ElementReference availableConsultantListBox;
+    private ElementReference mappedConsultantListBox;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        currentUserId = authState.User.Identity?.Name;
+
+        // --- MODIFIED: Load RCMs on init instead of verticals ---
+        await LoadRcmsAsync();
+        // We still need all verticals and consultants for the Edit modal's mapping feature
+        allVerticals = await oracleService.GetVerticalsAsync();
+        allConsultants = await oracleService.GetActiveConsultantsAsync();
+    }
+
+    // --- NEW: Central method to load RCMs with search and pagination ---
+    private async Task LoadRcmsAsync()
+    {
+        isLoading = true;
+        StateHasChanged(); // Update UI to show spinner
+
+        var result = await oracleService.SearchRcmsAsync(searchTerm, currentPage, pageSize);
+        rcms = result.Rcms;
+        totalRecords = result.TotalRecords;
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    // --- NEW: Handle search input and button click ---
+    private async Task SearchInputChanged(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrEmpty(searchTerm))
+        {
+            await PerformSearch();
+        }
+    }
+
+    private async Task PerformSearch()
+    {
+        currentPage = 1;
+        await LoadRcmsAsync();
+    }
+
+    // --- NEW: Handle page changes from the Pagination component ---
+    private async Task OnPageChanged(int newPage)
+    {
+        currentPage = newPage;
+        await LoadRcmsAsync();
+    }
+
+    private void AddNewRcm()
+    {
+        currentRcm = new RcmMaster();
+        isEditMode = false;
+        modalTitle = "Add New RCM";
+        isModalVisible = true;
+    }
+
+    // Unchanged from original file
+    private async Task EditRcm(RcmMaster rcmToEdit)
+    {
+        try
+        {
+            currentRcm = rcmToEdit;
+            isEditMode = true;
+            modalTitle = $"Edit RCM: {currentRcm.RcmName}";
+
+            mappedVerticals = await oracleService.GetVerticalsForRcmAsync(currentRcm.SqNo);
+            originalMappedVerticals = new List<VerticalMaster>(mappedVerticals);
+            var mappedVerticalIds = mappedVerticals.Select(v => v.VerticalId).ToHashSet();
+            availableVerticals = allVerticals?.Where(v => !mappedVerticalIds.Contains(v.VerticalId)).ToList() ?? new();
+
+            mappedConsultants = await oracleService.GetConsultantsForRcmAsync(currentRcm.SqNo);
+            originalMappedConsultants = new List<ConsultantMaster>(mappedConsultants);
+            var mappedConsultantIds = mappedConsultants.Select(c => c.SqNo).ToHashSet();
+            availableConsultants = allConsultants?.Where(c => !mappedConsultantIds.Contains(c.SqNo)).ToList() ?? new();
+
+            isModalVisible = true;
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Failed to load RCM for editing. Error: {ex.Message}");
+        }
+    }
+
+    private async Task SaveRcm()
+    {
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error: User session is invalid. Please log in again.");
+            return;
+        }
+
+        try
+        {
+            if (isEditMode)
+            {
+                // Update logic for edit mode is unchanged
+                await oracleService.UpdateRcmAsync(currentRcm, currentUserId);
+
+                // --- Vertical mapping logic (unchanged) ---
+                var currentMappedVerticalIds = mappedVerticals.Select(v => v.VerticalId).ToHashSet();
+                var originalMappedVerticalIds = originalMappedVerticals.Select(v => v.VerticalId).ToHashSet();
+                var verticalsToAdd = mappedVerticals.Where(v => !originalMappedVerticalIds.Contains(v.VerticalId));
+                foreach (var vertical in verticalsToAdd) { await oracleService.MapRcmToVerticalAsync(currentRcm.SqNo, vertical.VerticalId, currentUserId); }
+                var verticalsToRemove = originalMappedVerticals.Where(v => !currentMappedVerticalIds.Contains(v.VerticalId));
+                foreach (var vertical in verticalsToRemove) { await oracleService.UnmapRcmFromVerticalAsync(currentRcm.SqNo, vertical.VerticalId); }
+
+                // --- Consultant mapping logic (unchanged) ---
+                var currentMappedConsultantIds = mappedConsultants.Select(c => c.SqNo).ToHashSet();
+                var originalMappedConsultantIds = originalMappedConsultants.Select(c => c.SqNo).ToHashSet();
+                var consultantsToAdd = mappedConsultants.Where(c => !originalMappedConsultantIds.Contains(c.SqNo));
+                foreach (var consultant in consultantsToAdd) { await oracleService.MapRcmToConsultantAsync(currentRcm.SqNo, consultant.SqNo, currentUserId); }
+                var consultantsToRemove = originalMappedConsultants.Where(c => !currentMappedConsultantIds.Contains(c.SqNo));
+                foreach (var consultant in consultantsToRemove) { await oracleService.UnmapRcmFromConsultantAsync(currentRcm.SqNo, consultant.SqNo); }
+
+                await JSRuntime.InvokeVoidAsync("alert", "RCM updated successfully!");
+            }
+            else
+            {
+                // --- MODIFIED: Simplified Add logic ---
+                // No automatic mapping on creation anymore.
+                await oracleService.AddRcmAsync(currentRcm, currentUserId);
+                await JSRuntime.InvokeVoidAsync("alert", "RCM created successfully.");
+            }
+
+            CloseModal();
+            // --- MODIFIED: Reload the main RCM list ---
+            currentPage = 1; // Go back to the first page to see the new item
+            await LoadRcmsAsync();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"An error occurred: {ex.Message}");
+        }
+    }
+
+    // --- NEW: Method to handle status changes ---
+    private async Task ToggleStatusAsync(RcmMaster rcm)
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        var newStatus = rcm.Status == "Active" ? "Inactive" : "Active";
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to change the status of '{rcm.RcmName}' to {newStatus}?"))
+        {
+            try
+            {
+                await oracleService.SetRcmStatusAsync(rcm.SqNo, newStatus, currentUserId);
+                await LoadRcmsAsync(); // Refresh the list
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error updating status: {ex.Message}");
+            }
+        }
+    }
+
+
+    private void CloseModal()
+    {
+        isModalVisible = false;
+        currentRcm = new();
+
+        availableVerticals.Clear();
+        mappedVerticals.Clear();
+        originalMappedVerticals.Clear();
+        availableConsultants.Clear();
+        mappedConsultants.Clear();
+        originalMappedConsultants.Clear();
+    }
+
+    // --- Mapping helper methods are unchanged ---
+    private async Task MapSelected()
+    {
+        var selectedIds = await JSRuntime.InvokeAsync<string[]>("getSelectedValues", availableListBox);
+        if (selectedIds != null)
+        {
+            var itemsToMove = availableVerticals.Where(v => selectedIds.Contains(v.VerticalId)).ToList();
+            foreach (var item in itemsToMove) { availableVerticals.Remove(item); mappedVerticals.Add(item); }
+            mappedVerticals = mappedVerticals.OrderBy(v => v.VerticalName).ToList();
+        }
+    }
+
+    private async Task UnmapSelected()
+    {
+        var selectedIds = await JSRuntime.InvokeAsync<string[]>("getSelectedValues", mappedListBox);
+        if (selectedIds != null)
+        {
+            var itemsToMove = mappedVerticals.Where(v => selectedIds.Contains(v.VerticalId)).ToList();
+            foreach (var item in itemsToMove) { mappedVerticals.Remove(item); availableVerticals.Add(item); }
+            availableVerticals = availableVerticals.OrderBy(v => v.VerticalName).ToList();
+        }
+    }
+
+    private async Task MapConsultantSelected()
+    {
+        var selectedIds = await JSRuntime.InvokeAsync<List<string>>("getSelectedValues", availableConsultantListBox);
+        if (selectedIds != null)
+        {
+            var selectedSqNos = selectedIds.Select(int.Parse).ToHashSet();
+            var itemsToMove = availableConsultants.Where(c => selectedSqNos.Contains(c.SqNo)).ToList();
+            foreach (var item in itemsToMove) { availableConsultants.Remove(item); mappedConsultants.Add(item); }
+            mappedConsultants = mappedConsultants.OrderBy(c => c.ConsultantName).ToList();
+        }
+    }
+
+    private async Task UnmapConsultantSelected()
+    {
+        var selectedIds = await JSRuntime.InvokeAsync<List<string>>("getSelectedValues", mappedConsultantListBox);
+        if (selectedIds != null)
+        {
+            var selectedSqNos = selectedIds.Select(int.Parse).ToHashSet();
+            var itemsToMove = mappedConsultants.Where(c => selectedSqNos.Contains(c.SqNo)).ToList();
+            foreach (var item in itemsToMove) { mappedConsultants.Remove(item); availableConsultants.Add(item); }
+            availableConsultants = availableConsultants.OrderBy(c => c.ConsultantName).ToList();
+        }
+    }
+}

@@ -1,0 +1,1357 @@
+﻿@page "/rcm-points"
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+@using System.ComponentModel
+@using System.Globalization
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using IFCO.WEB.Components.Shared
+@using static IFCO.WEB.Components.Shared.Modal
+@inject OracleService DbService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+
+<PageTitle>RCM Points Master</PageTitle>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">RCM Point Configuration</h5>
+    </div>
+    <div class="card-body">
+        <div class="row align-items-end">
+            <div class="col-md-10">
+                <label class="form-label fw-bold">Select Your Assigned RCM:</label>
+                <InputSelect @bind-Value="SelectedRcmSqNo" class="form-select">
+                    <option value="0">-- Please select an RCM --</option>
+                    @if (rcmsForDropdown != null)
+                    {
+                        @foreach (var rcm in rcmsForDropdown)
+                        {
+                            <option value="@rcm.SqNo">@rcm.RcmName (@rcm.RcmId)</option>
+                        }
+                    }
+                </InputSelect>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (SelectedRcmSqNo > 0)
+{
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Points for: @(rcmsForDropdown?.FirstOrDefault(r => r.SqNo == SelectedRcmSqNo)?.RcmName)</h5>
+            <div>
+                @if (canCreateNewPoint)
+                {
+                    <button class="btn btn-primary" @onclick="() => OpenModal(null)">
+                        <i class="bi bi-plus-circle-fill me-2"></i> Add New Point
+                    </button>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" autocomplete="off" class="form-control" placeholder="Search by Process or Risk..." @bind="searchTerm" @bind:event="oninput" />
+                    </div>
+                </div>
+            </div>
+            @if (isLoading)
+            {
+                <div class="text-center p-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading Points...</p>
+                </div>
+            }
+            else if (rcmPoints == null || !rcmPoints.Any())
+            {
+                <div class="text-center p-4 text-muted">
+                    <i class="bi bi-info-circle" style="font-size: 3rem;"></i>
+                    <h5 class="mt-3">No Points Found</h5>
+                    <p>There are no RCM points created for this selection. You can add one using the button above.</p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Process</th>
+                                <th>Sub Process</th>
+                                <th>Risk Description</th>
+                                <th>Status</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var point in rcmPoints)
+                            {
+                                <tr>
+                                    <td>@point.Process</td>
+                                    <td>@point.SubProcess</td>
+                                    <td style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@point.RiskDescription">@point.RiskDescription</td>
+                                    <td><span class="badge @GetStatusBadgeClass(point.Status)">@point.Status</span></td>
+                                    <td class="text-center">
+                                        <button class="btn btn-sm btn-outline-info me-2" @onclick="() => OpenModal(point, viewMode: true)">
+                                            <i class="bi bi-eye-fill"></i> View
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary"
+                                                @onclick="() => OpenModal(point)"
+                                                disabled="@IsEditButtonDisabled(point)">
+                                            <i class="bi bi-pencil-square"></i> Edit
+                                        </button>
+                                        @if (currentUserRole == "Maker" || currentUserRole == "Admin")
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger ms-2" @onclick="() => HandleDeleteRequest(point)">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4">
+                    <Pagination CurrentPage="@currentPage"
+                                TotalPages="@totalPages"
+                                OnPageChanged="OnPageChanged" />
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<Modal Title="@modalTitle" @bind-IsOpen="isModalVisible" Size="ModalSize.ExtraLarge">
+    <Body>
+        @if (currentRcmPoint.Status == "Rejected" && !string.IsNullOrEmpty(currentRcmPoint.RejectionReason))
+        {
+            <div class="alert alert-warning" role="alert">
+                <h6 class="alert-heading">Reason for Rejection:</h6>
+                <p class="mb-0">@currentRcmPoint.RejectionReason</p>
+            </div>
+        }
+        <ul class="nav nav-tabs" id="rcmPointTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details-tab-pane" type="button" role="tab">Details</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(isAddingNew ? "disabled" : "")" id="attachments-tab" data-bs-toggle="tab" data-bs-target="#attachments-tab-pane" type="button" role="tab">Attachments (@(attachedFiles?.Count ?? 0))</button>
+            </li>
+        </ul>
+        <div class="tab-content pt-3" id="rcmPointTabContent">
+            <div class="tab-pane fade show active" id="details-tab-pane" role="tabpanel">
+                @if (currentRcmPoint != null)
+                {
+                    <EditForm @ref="pointForm" Model="@currentRcmPoint">
+                        <DataAnnotationsValidator />
+                        <div class="@(canEditCoreDetails ? "" : "form-readonly")">
+                            <div class="accordion" id="rcmPointAccordion">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingOne">
+                                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                                            Section A: Process and Risk Details
+                                        </button>
+                                    </h2>
+                                    <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Process</label>
+                                                    <InputText @bind-Value="currentRcmPoint.Process" class="form-control" />
+                                                    <ValidationMessage For="@(() => currentRcmPoint.Process)" />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Sub-Process</label>
+                                                    <InputText @bind-Value="currentRcmPoint.SubProcess" class="form-control" />
+                                                </div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Risk Description</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.RiskDescription" class="form-control" rows="3" />
+                                                <ValidationMessage For="@(() => currentRcmPoint.RiskDescription)" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingTwo">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                                            Section B: Impact and Risk Rating
+                                        </button>
+                                    </h2>
+                                    <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Impact on Occurrence</label>
+                                                    <InputSelect Value="currentRcmPoint.ImpactOnOccurrence" ValueChanged="(string s) => OnImpactChanged(s)" ValueExpression="() => currentRcmPoint.ImpactOnOccurrence" class="form-select">
+                                                        <option value="">Select Impact...</option>
+                                                        @foreach (var item in impactOptions)
+                                                        {
+                                                            <option value="@item.Key">@item.Key</option>
+                                                        }
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Score of Impact Occurrence</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ScoreOfImpactOnOccurrence" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Probability of Occurrence</label>
+                                                    <InputSelect Value="currentRcmPoint.ProbabilityOfOccurrence" ValueChanged="(string s) => OnProbabilityChanged(s)" ValueExpression="() => currentRcmPoint.ProbabilityOfOccurrence" class="form-select">
+                                                        <option value="">Select Probability...</option>
+                                                        @foreach (var item in probabilityOptions)
+                                                        {
+                                                            <option value="@item.Key">@item.Key</option>
+                                                        }
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Score of Probability of Occurrence</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ScoreOfProbabilityOfOccurrence" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Risk Rating</label>
+                                                    <InputText @bind-Value="currentRcmPoint.RiskRatingHJ" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Risk Category</label>
+                                                    <InputText @bind-Value="currentRcmPoint.RiskCategory" class="@GetRiskCategoryCssClass()" readonly />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingThree">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                                            Section C: Significant Accounting Disclosures
+                                        </button>
+                                    </h2>
+                                    <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">SAD Schedule No</label>
+                                                    <InputText @bind-Value="currentRcmPoint.SadScheduleNo" class="form-control" />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">SAD Name</label>
+                                                    <InputText @bind-Value="currentRcmPoint.SadName" class="form-control" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingFour">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour">
+                                            Section D: Assertions
+                                        </button>
+                                    </h2>
+                                    <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Existence & Occurrence</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.ExistenceOccurrence" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Completeness / Cut-Off</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.CompletenessCutOff" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Rights & Obligations</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.RightsObligations" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Valuation & Allocation</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.ValuationAllocation" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Accuracy & Classification</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.AccuracyClassification" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Presentation & Disclosure</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.PresentationDisclosure" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        <option value="Yes">Yes</option>
+                                                        <option value="No">No</option>
+                                                    </InputSelect>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingFive">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFive">
+                                            Section E: Controls
+                                        </button>
+                                    </h2>
+                                    <div id="collapseFive" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Control Activity</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.ControlActivity" class="form-control" rows="3" />
+                                                <ValidationMessage For="@(() => currentRcmPoint.ControlActivity)" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Control Department</label>
+                                                <InputSelect @bind-Value="currentRcmPoint.ControlDept" class="form-select">
+                                                    <option value="">-- Select Department --</option>
+                                                    @if (controlDepartmentOptions != null)
+                                                    {
+                                                        @foreach (var vertical in controlDepartmentOptions)
+                                                        {
+                                                            <option value="@vertical.VerticalId">@vertical.VerticalName</option>
+                                                        }
+                                                    }
+                                                </InputSelect>
+                                                <ValidationMessage For="@(() => currentRcmPoint.ControlDept)" />
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Designation</label>
+                                                    <InputText @bind-Value="currentRcmPoint.Designation" class="form-control" />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Common/Centralised Control</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.CommonCentralisedControl" class="form-select">
+                                                        <option value="">-- Select Type --</option>
+                                                        <option value="Common">Common</option>
+                                                        <option value="Centralised">Centralised</option>
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Control Type</label>
+                                                    <InputSelect Value="currentRcmPoint.ControlType" ValueChanged="(string s) => OnControlTypeChanged(s)" ValueExpression="() => currentRcmPoint.ControlType" class="form-select">
+                                                        <option value="">Select Type...</option>
+                                                        @foreach (var item in controlTypeOptions)
+                                                        {
+                                                            <option value="@item.Key">@item.Key</option>
+                                                        }
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Control Type Score</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ControlTypeScore" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Level Of Automation</label>
+                                                    <InputSelect Value="currentRcmPoint.LevelOfAutomation" ValueChanged="(string s) => OnAutomationChanged(s)" ValueExpression="() => currentRcmPoint.LevelOfAutomation" class="form-select">
+                                                        <option value="">Select Level...</option>
+                                                        @foreach (var item in automationOptions)
+                                                        {
+                                                            <option value="@item.Key">@item.Key</option>
+                                                        }
+                                                    </InputSelect>
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Control Automation Score</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ControlAutomationScore" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Control Strength Score</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ControlStrengthScore" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Control Strength</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ControlStrength" class="@GetControlStrengthCssClass()" readonly />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingSix">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSix">
+                                            Section F: Key Controls and Frequency
+                                        </button>
+                                    </h2>
+                                    <div id="collapseSix" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="row">
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Score for Key/Non-Key</label>
+                                                    <InputText @bind-Value="currentRcmPoint.ScoreForKeyNonKey" class="form-control" readonly />
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Key Control/Non-Key Control</label>
+                                                    <InputText @bind-Value="currentRcmPoint.KeyControlNonKeyControl" class="@GetKeyControlCssClass()" readonly />
+                                                </div>
+                                                <div class="col-md-4 mb-3">
+                                                    <label class="form-label">Frequency of Control</label>
+                                                    <InputSelect @bind-Value="currentRcmPoint.FrequencyOfControl" class="form-select">
+                                                        <option value="">Select...</option>
+                                                        @foreach (var freq in frequencyOptions)
+                                                        {
+                                                            <option value="@freq">@freq</option>
+                                                        }
+                                                    </InputSelect>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingSeven">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSeven">
+                                            Section G: Design and Response Plan
+                                        </button>
+                                    </h2>
+                                    <div id="collapseSeven" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Design Gap</label>
+                                                <InputSelect @bind-Value="currentRcmPoint.DesignGapYesNo" class="form-select">
+                                                    <option value="">Select...</option>
+                                                    <option value="Yes">Yes</option>
+                                                    <option value="No">No</option>
+                                                </InputSelect>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Recommendation / Remediation Plan / Risk Response Plan</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.RecommendationRemediationPlan" class="form-control" rows="3" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Management Response</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.ManagementResponse" class="form-control" rows="3" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingEight">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEight">
+                                            Section H: Testing Status
+                                        </button>
+                                    </h2>
+                                    <div id="collapseEight" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                        <div class="accordion-body">
+                                            <div class="mb-3">
+                                                <label class="form-label">Testing Procedure</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.TestingProcedure" class="form-control" rows="3" />
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">No. of Samples Tested</label>
+                                                    <InputText @bind-Value="currentRcmPoint.NoOfSamplesTested" class="form-control" />
+                                                </div>
+                                                <div class="col-md-6 mb-3">
+                                                    <label class="form-label">Operating Effectiveness</label>
+                                                    <InputText @bind-Value="currentRcmPoint.OperatingEffectiveness" class="form-control" />
+                                                </div>
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Nature of tests carried out</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.NatureOfTestsCarriedOut" class="form-control" rows="3" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Control Activity Evidence</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.ControlActivityEvidence" class="form-control" rows="3" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label class="form-label">Comment, if Any</label>
+                                                <InputTextArea @bind-Value="currentRcmPoint.CommentIfAny" class="form-control" rows="3" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        @if (currentUserLoginType == "Vertical")
+                        {
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="headingNine">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseNine">
+                                        Section I: Vertical/Admin
+                                    </button>
+                                </h2>
+                                <div id="collapseNine" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                    <div class="accordion-body">
+                                        <div class="mb-3">
+                                            <label class="form-label">Management Reply</label>
+                                            <InputTextArea @bind-Value="currentRcmPoint.ManagementReply" class="form-control" rows="3" readonly="@(currentUserRole != "Vertical")" />
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Admin Reply</label>
+                                            <InputTextArea @bind-Value="currentRcmPoint.AdminReply" class="form-control" rows="3" readonly="@(currentUserRole != "Admin")" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </EditForm>
+                }
+                else
+                {
+                    <p><em>Loading form...</em></p>
+                }
+            </div>
+
+            <div class="tab-pane fade" id="attachments-tab-pane" role="tabpanel">
+                @if (isAddingNew)
+                {
+                    <div class="alert alert-info" role="alert">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        Please save the details first to enable file attachments.
+                    </div>
+                }
+                else
+                {
+                    @if (!isViewMode)
+                    {
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5>Upload New File</h5>
+                                <div class="mb-3">
+                                    <InputFile OnChange="HandleFileSelected" class="form-control" disabled="@isUploading" />
+                                    @if (isUploading)
+                                    {
+                                        <div class="form-text">Uploading, please wait...</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <hr />
+                    }
+
+                    <h5>Existing Files</h5>
+                    @if (attachedFiles == null)
+                    {
+                        <p><em>Loading files...</em></p>
+                    }
+                    else if (!attachedFiles.Any())
+                    {
+                        <p>No files have been attached to this point.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-group">
+                            @foreach (var file in attachedFiles)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>
+                                        <i class="bi bi-file-earmark-text me-2"></i>
+                                        @file.FileName (@((file.FileSizeBytes ?? 0) / 1024) KB)
+                                    </span>
+                                    <div>
+                                        <a href="@($"api/file/download/{file.FileSqNo}")" target="_blank" class="btn btn-sm btn-outline-primary me-2">
+                                            <i class="bi bi-download"></i> Download
+                                        </a>
+
+                                        @if (!isViewMode && (canEditCoreDetails || currentUserLoginType == "Vertical"))
+                                        {
+                                            <button class="btn btn-sm btn-danger" @onclick="() => DeleteAttachment(file.FileSqNo)">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </button>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                }
+            </div>
+        </div>
+    </Body>
+    <Footer>
+        <div class="me-auto">
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div class="@statusMessageCssClass" role="alert">@statusMessage</div>
+            }
+        </div>
+
+        @if (isViewMode)
+        {
+            @if (isRejecting)
+            {
+                <div class="w-100">
+                    <InputTextArea @bind-Value="rejectionReason" class="form-control mb-2" placeholder="Enter rejection reason..." />
+                    <button type="button" class="btn btn-secondary" @onclick="() => isRejecting = false">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="HandleReject">Confirm Rejection</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+
+                @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted")
+                {
+                    <button type="button" class="btn btn-danger" @onclick="() => isRejecting = true">
+                        <i class="bi bi-x-circle me-2"></i>Reject
+                    </button>
+                    <button type="button" class="btn btn-success" @onclick="HandleVerify">
+                        <i class="bi bi-check2-circle me-2"></i>Verify
+                    </button>
+                }
+                @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted for Deletion")
+                {
+                    <button type="button" class="btn btn-danger" @onclick="HandlePermanentDelete">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Permanent Deletion
+                    </button>
+                }
+            }
+        }
+        else if (currentUserLoginType == "Consultant" || (currentUserLoginType == "Vertical" && currentUserRole == "Admin"))
+        {
+            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+            <button type="button" class="btn btn-info" @onclick="HandleSaveChanges">
+                <i class="bi bi-save me-2"></i>Save Changes
+            </button>
+            <button type="button" class="btn btn-primary" @onclick="HandleSubmitChanges">
+                <i class="bi bi-check-circle me-2"></i>Submit Changes
+            </button>
+        }
+        else if (currentUserLoginType == "Vertical")
+        {
+            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+            @if (currentUserRole == "Vertical" && (currentRcmPoint.Status == "Verified" || currentRcmPoint.Status == "Admin Submitted"))
+            {
+                <button type="button" class="btn btn-primary" @onclick="HandleManagementSubmit">
+                    <i class="bi bi-send me-2"></i>Submit Reply
+                </button>
+            }
+            @if (currentUserRole == "Admin" && currentRcmPoint.Status == "Management Submitted")
+            {
+                <button type="button" class="btn btn-success" @onclick="HandleAdminSubmit">
+                    <i class="bi bi-check2-all me-2"></i>Submit Admin Reply
+                </button>
+            }
+        }
+        else
+        {
+            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+    private string? currentUserId;
+    private bool canCreateNewPoint = false;
+    private string? currentUserLoginType;
+    private string? currentUserRole;
+    private bool isViewMode = false;
+    private bool isRejecting = false;
+    private string rejectionReason = "";
+    private bool canEditCoreDetails = false;
+    // --- Page State ---
+    private List<VerticalMaster>? allVerticals;
+    private List<RcmMaster>? rcmsForDropdown;
+    private List<RcmPointsMaster>? rcmPoints;
+    private bool isLoading = false;
+    private string? searchTerm;
+    private List<VerticalMaster>? controlDepartmentOptions;
+
+    // --- Cascading Dropdown State ---
+
+    private int _selectedRcmSqNo;
+    public int SelectedRcmSqNo
+    {
+        get => _selectedRcmSqNo;
+        set
+        {
+            if (_selectedRcmSqNo != value)
+            {
+                _selectedRcmSqNo = value;
+                currentPage = 1; // Reset to first page
+                InvokeAsync(async () =>
+                {
+                    await LoadRcmPoints(currentPage);
+                    await LoadControlDepartmentOptionsAsync();
+                });
+            }
+        }
+    }
+
+
+    // --- Pagination State ---
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalRecords = 0;
+    private int totalPages => (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+    // --- Modal and Form State ---
+    private bool isModalVisible = false;
+    private bool isAddingNew;
+    private string modalTitle = "";
+    private RcmPointsMaster currentRcmPoint = new();
+    private EditForm? pointForm;
+    private string? statusMessage;
+    private string statusMessageCssClass = "";
+
+
+    // --- File Attachment State ---
+    private List<RcmPointFilesMaster>? attachedFiles;
+    private bool isUploading = false;
+    private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
+
+    // --- Dictionaries for Dropdown Options ---
+    private readonly Dictionary<string, int> impactOptions = new() { { "Insignificant", 1 }, { "Minor", 2 }, { "Moderate", 3 }, { "Severe", 4 } };
+    private readonly Dictionary<string, int> probabilityOptions = new() { { "Unlikely", 1 }, { "Possible", 2 }, { "Likely", 3 } };
+    private readonly Dictionary<string, int> controlTypeOptions = new() { { "No Control", 0 }, { "Detective", 1 }, { "Preventive", 2 } };
+    private readonly Dictionary<string, int> automationOptions = new() { { "No Control", 0 }, { "Manual", 1 }, { "Partially Automated", 2 }, { "Fully Automated", 3 } };
+    private readonly List<string> frequencyOptions = new() { "Event Based", "Daily", "Weekly", "Monthly", "Quarterly", "Semi-annually", "Annually" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+        currentUserId = user.Identity?.Name;
+
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            NavigationManager.NavigateTo("");
+            return;
+        }
+
+        currentUserLoginType = user.FindFirst("LoginType")?.Value;
+        currentUserRole = user.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+
+        if (currentUserLoginType == "Consultant")
+        {
+            // MODIFIED: Only Makers can create new points
+            if (currentUserRole == "Maker")
+            {
+                canCreateNewPoint = true;
+            }
+            rcmsForDropdown = await DbService.GetRcmsForConsultantAsync(currentUserId);
+        }
+        else if (currentUserLoginType == "Vertical")
+        {
+            if (currentUserRole == "Admin")
+            {
+                canCreateNewPoint = true;
+            }
+
+            var verticalId = user.FindFirst("VerticalId")?.Value;
+            rcmsForDropdown = await DbService.GetRcmsByVerticalAndRoleAsync(verticalId, currentUserRole);
+        }
+    }
+
+    private async Task LoadControlDepartmentOptionsAsync()
+    {
+        controlDepartmentOptions = null;
+        if (SelectedRcmSqNo > 0)
+        {
+            controlDepartmentOptions = await DbService.GetMappedVerticalsForRcmAsync(SelectedRcmSqNo);
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadRcmPoints(int pageNumber = 1)
+    {
+        if (SelectedRcmSqNo == 0)
+        {
+            rcmPoints = new List<RcmPointsMaster>();
+            totalRecords = 0;
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+
+        // --- NEW LOGIC: Determine status filter based on role ---
+        string? statusFilter = null;
+        if (currentUserLoginType == "Consultant" && currentUserRole == "Maker")
+        {
+            statusFilter = "Saved,Rejected";
+        }
+        else if (currentUserLoginType == "Consultant" && currentUserRole == "Checker")
+        {
+            statusFilter = "Submitted,Submitted for Deletion,Admin Submitted";
+        }
+        else if (currentUserLoginType == "Vertical" && currentUserRole == "Vertical") // Role is 'Vertical' for non-admin vertical users
+        {
+            statusFilter = "Verified,Admin Submitted,Submitted";
+        }
+        // For Admin (currentUserRole == "Admin"), statusFilter remains null to fetch all.
+
+        try
+        {
+            // Pass the new filter to the service
+            var result = await DbService.SearchRcmPointsAsync(
+                rcmSqNo: SelectedRcmSqNo,
+                status: statusFilter,
+                pageNumber: pageNumber,
+                pageSize: pageSize);
+
+            rcmPoints = result.Points;
+            totalRecords = result.TotalRecords;
+            currentPage = pageNumber;
+        }
+        catch (Exception ex)
+        {
+            rcmPoints = new List<RcmPointsMaster>();
+            totalRecords = 0;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnPageChanged(int newPage)
+    {
+        await LoadRcmPoints(newPage);
+    }
+
+    private async Task OpenModal(RcmPointsMaster? point, bool viewMode = false)
+    {
+        statusMessage = null;
+        isViewMode = viewMode;
+        isRejecting = false;
+        rejectionReason = "";
+        canEditCoreDetails = false; // Default to read-only
+
+        if (point == null) // Add mode
+        {
+            isAddingNew = true;
+            isViewMode = false;
+            canEditCoreDetails = true; // Makers can edit when adding
+            modalTitle = "Add New RCM Point";
+            attachedFiles = new List<RcmPointFilesMaster>();
+            currentRcmPoint = new RcmPointsMaster { RcmSqNo = SelectedRcmSqNo };
+        }
+        else // Edit or View mode
+        {
+            isAddingNew = false;
+            modalTitle = isViewMode ? $"View RCM Point" : $"Edit RCM Point";
+
+            // Makers can edit core details only if status is Saved or Rejected and not in view mode
+            if (currentUserLoginType == "Consultant" && !isViewMode && (point.Status == "Saved" || point.Status == "Rejected"))
+            {
+                canEditCoreDetails = true;
+            }
+
+            currentRcmPoint = await DbService.GetRcmPointByIdAsync(point.SqNo);
+            await LoadAttachments();
+        }
+        isModalVisible = true;
+    }
+
+    private void CloseModal() 
+    { 
+        isModalVisible = false;
+        statusMessage = "";
+        statusMessageCssClass = "";
+    }
+
+    private async Task HandleSaveChanges()
+    {
+        if (string.IsNullOrEmpty(currentUserId) || pointForm?.EditContext == null || !pointForm.EditContext.Validate())
+        {
+            return;
+        }
+
+        statusMessage = "Saving...";
+        statusMessageCssClass = "alert alert-info";
+        StateHasChanged();
+
+        try
+        {
+            // Set the VerticalId from the Control Department dropdown before saving
+            currentRcmPoint.VerticalId = currentRcmPoint.ControlDept;
+
+            if (isAddingNew)
+            {
+                currentRcmPoint.Status = "Saved";
+                int newPointId = await DbService.AddRcmPointAsync(currentRcmPoint, currentUserId);
+
+                currentRcmPoint.SqNo = newPointId;
+                isAddingNew = false;
+                modalTitle = $"Edit RCM Point ({currentRcmPoint.Process})";
+                statusMessage = "'Saved' operation successful! You can now upload attachments.";
+                statusMessageCssClass = "alert alert-success";
+                await LoadRcmPoints();
+            }
+            else
+            {
+                await DbService.UpdateRcmPointAsync(currentRcmPoint, currentUserId);
+                statusMessage = "Changes saved successfully!";
+                statusMessageCssClass = "alert alert-success";
+                await LoadRcmPoints(currentPage);
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmitChanges()
+    {
+        if (string.IsNullOrEmpty(currentUserId) || pointForm?.EditContext == null || !pointForm.EditContext.Validate())
+        {
+            return;
+        }
+
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to submit these changes? This will finalize the entry."))
+        {
+            return;
+        }
+
+        statusMessage = "Submitting...";
+        statusMessageCssClass = "alert alert-info";
+        StateHasChanged();
+
+        try
+        {
+            // Set the VerticalId from the Control Department dropdown before saving
+            currentRcmPoint.VerticalId = currentRcmPoint.ControlDept;
+
+            if (isAddingNew)
+            {
+                currentRcmPoint.Status = "Submitted";
+                int newPointId = await DbService.AddRcmPointAsync(currentRcmPoint, currentUserId);
+
+                statusMessage = "RCM Point submitted successfully!";
+                statusMessageCssClass = "alert alert-success";
+                await Task.Delay(1500);
+                CloseModal();
+                await LoadRcmPoints();
+            }
+            else
+            {
+                await DbService.UpdateRcmPointAsync(currentRcmPoint, currentUserId);
+                await DbService.SetRcmPointStatusAsync(currentRcmPoint.SqNo, "Submitted", currentUserId);
+
+                statusMessage = "RCM Point submitted successfully!";
+                statusMessageCssClass = "alert alert-success";
+                await Task.Delay(1500);
+                CloseModal();
+                await LoadRcmPoints(currentPage);
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+        StateHasChanged();
+    }
+    private async Task HandleVerify()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        statusMessage = "Verifying...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.SetRcmPointStatusAsync(currentRcmPoint.SqNo, "Verified", currentUserId);
+            // statusMessage = "Point Verified Successfully!";
+            // statusMessageCssClass = "alert alert-success";
+            // await Task.Delay(1500);
+            await JSRuntime.InvokeVoidAsync("alert", "Point Verified Successfully!");
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+    }
+
+    private async Task HandleReject()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+        if (string.IsNullOrWhiteSpace(rejectionReason))
+        {
+            statusMessage = "Rejection reason cannot be empty.";
+            statusMessageCssClass = "alert alert-warning";
+            return;
+        }
+
+        statusMessage = "Rejecting...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.RejectRcmPointAsync(currentRcmPoint.SqNo, rejectionReason, currentUserId);
+            // statusMessage = "Point Rejected Successfully!";
+            // statusMessageCssClass = "alert alert-success";
+            // await Task.Delay(1500);
+            await JSRuntime.InvokeVoidAsync("alert", "Point Rejected Successfully!");
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+    }
+    private async Task HandleManagementSubmit()
+    {
+        if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrWhiteSpace(currentRcmPoint.ManagementReply))
+        {
+            statusMessage = "Management Reply cannot be empty.";
+            statusMessageCssClass = "alert alert-warning";
+            return;
+        }
+
+        statusMessage = "Submitting Reply...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.SubmitManagementReplyAsync(currentRcmPoint.SqNo, currentRcmPoint.ManagementReply, currentUserId);
+            statusMessage = "Reply Submitted Successfully!";
+            statusMessageCssClass = "alert alert-success";
+            await Task.Delay(1500);
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task HandleAdminSubmit()
+    {
+        if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrWhiteSpace(currentRcmPoint.AdminReply))
+        {
+            statusMessage = "Admin Reply cannot be empty.";
+            statusMessageCssClass = "alert alert-warning";
+            return;
+        }
+
+        statusMessage = "Submitting Reply...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.SubmitAdminReplyAsync(currentRcmPoint.SqNo, currentRcmPoint.AdminReply, currentUserId);
+            statusMessage = "Reply Submitted Successfully!";
+            statusMessageCssClass = "alert alert-success";
+            await Task.Delay(1500);
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+        }
+    }
+    private async Task HandleDeleteRequest(RcmPointsMaster point)
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to submit '{point.Process}' for deletion?");
+        if (confirmed)
+        {
+            try
+            {
+                await DbService.SetRcmPointStatusAsync(point.SqNo, "Submitted for Deletion", currentUserId);
+                await LoadRcmPoints(currentPage); // Refresh the grid
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task HandlePermanentDelete()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "WARNING: This will permanently delete the RCM point and all its attachments. This action cannot be undone. Are you sure you want to proceed?");
+        if (confirmed)
+        {
+            statusMessage = "Deleting...";
+            statusMessageCssClass = "alert alert-info";
+            try
+            {
+                await DbService.DeleteRcmPointAsync(currentRcmPoint.SqNo);
+                statusMessage = "Point permanently deleted.";
+                statusMessageCssClass = "alert alert-success";
+                await Task.Delay(1500);
+                CloseModal();
+                await LoadRcmPoints(currentPage);
+            }
+            catch (Exception ex)
+            {
+                statusMessage = $"Error: {ex.Message}";
+            }
+        }
+    }
+    #region Dynamic Calculation Logic
+    private void OnImpactChanged(string selectedImpact)
+    {
+        currentRcmPoint.ImpactOnOccurrence = selectedImpact;
+        currentRcmPoint.ScoreOfImpactOnOccurrence = impactOptions.TryGetValue(selectedImpact, out var score) ? score.ToString() : null;
+        CalculateRiskRating();
+    }
+
+    private void OnProbabilityChanged(string selectedProbability)
+    {
+        currentRcmPoint.ProbabilityOfOccurrence = selectedProbability;
+        currentRcmPoint.ScoreOfProbabilityOfOccurrence = probabilityOptions.TryGetValue(selectedProbability, out var score) ? score.ToString() : null;
+        CalculateRiskRating();
+    }
+
+    private void CalculateRiskRating()
+    {
+        if (int.TryParse(currentRcmPoint.ScoreOfImpactOnOccurrence, out var impactScore) &&
+            int.TryParse(currentRcmPoint.ScoreOfProbabilityOfOccurrence, out var probScore))
+        {
+            var rating = impactScore * probScore;
+            currentRcmPoint.RiskRatingHJ = rating.ToString();
+
+            if ((rating <= 2) || (rating == 3 && impactScore == 1)) currentRcmPoint.RiskCategory = "Low";
+            else if (rating <= 6) currentRcmPoint.RiskCategory = "Medium";
+            else currentRcmPoint.RiskCategory = "High";
+        }
+        else
+        {
+            currentRcmPoint.RiskRatingHJ = null;
+            currentRcmPoint.RiskCategory = null;
+        }
+        CalculateKeyControlScore();
+    }
+
+    private void OnControlTypeChanged(string selectedType)
+    {
+        currentRcmPoint.ControlType = selectedType;
+        currentRcmPoint.ControlTypeScore = controlTypeOptions.TryGetValue(selectedType, out var score) ? score.ToString() : null;
+        CalculateControlStrength();
+    }
+
+    private void OnAutomationChanged(string selectedLevel)
+    {
+        currentRcmPoint.LevelOfAutomation = selectedLevel;
+        currentRcmPoint.ControlAutomationScore = automationOptions.TryGetValue(selectedLevel, out var score) ? score.ToString() : null;
+        CalculateControlStrength();
+    }
+
+    private void CalculateControlStrength()
+    {
+        if (int.TryParse(currentRcmPoint.ControlTypeScore, out var typeScore) &&
+            int.TryParse(currentRcmPoint.ControlAutomationScore, out var autoScore))
+        {
+            var strengthScore = typeScore * autoScore;
+            currentRcmPoint.ControlStrengthScore = strengthScore.ToString();
+
+            if (strengthScore <= 2) currentRcmPoint.ControlStrength = "Limited";
+            else currentRcmPoint.ControlStrength = "Strong";
+        }
+        else
+        {
+            currentRcmPoint.ControlStrengthScore = null;
+            currentRcmPoint.ControlStrength = null;
+        }
+        CalculateKeyControlScore();
+    }
+
+    private void CalculateKeyControlScore()
+    {
+        var riskCategoryValue = currentRcmPoint.RiskCategory switch
+        {
+            "Low" => 1,
+            "Medium" => 2,
+            "High" => 3,
+            _ => 0
+        };
+
+        var controlStrengthValue = currentRcmPoint.ControlStrength switch
+        {
+            "Strong" => 1,
+            "Limited" => 2,
+            _ => 0
+        };
+
+        if (riskCategoryValue > 0 && controlStrengthValue > 0)
+        {
+            var score = riskCategoryValue * controlStrengthValue;
+            currentRcmPoint.ScoreForKeyNonKey = score.ToString();
+
+            if (score <= 2) currentRcmPoint.KeyControlNonKeyControl = "Non-Key Control";
+            else currentRcmPoint.KeyControlNonKeyControl = "Key Control";
+        }
+        else
+        {
+            currentRcmPoint.ScoreForKeyNonKey = null;
+            currentRcmPoint.KeyControlNonKeyControl = null;
+        }
+    }
+    #endregion
+
+    #region CSS Helper Methods
+    private string GetRiskCategoryCssClass()
+    {
+        return currentRcmPoint.RiskCategory switch
+        {
+            "Low" => "form-control risk-cat risk-cat-low",
+            "Medium" => "form-control risk-cat risk-cat-medium",
+            "High" => "form-control risk-cat risk-cat-high",
+            _ => "form-control"
+        };
+    }
+
+    private string GetRiskCategoryBadgeClass(string? riskCategory)
+    {
+        return riskCategory switch
+        {
+            "Low" => "bg-success",
+            "Medium" => "bg-warning text-dark",
+            "High" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusBadgeClass(string? status)
+    {
+        return status switch
+        {
+            "Saved" => "bg-secondary",
+            "Submitted" => "bg-primary",
+            "Verified" => "bg-success",
+            "Rejected" => "bg-danger",
+            _ => "bg-light text-dark"
+        };
+    }
+
+    private string GetControlStrengthCssClass()
+    {
+        return currentRcmPoint.ControlStrength switch
+        {
+            "Strong" => "form-control control-strength control-strength-strong",
+            "Limited" => "form-control control-strength control-strength-limited",
+            _ => "form-control"
+        };
+    }
+
+    private string GetKeyControlCssClass()
+    {
+        return currentRcmPoint.KeyControlNonKeyControl switch
+        {
+            "Key Control" => "form-control key-control key-control-key",
+            "Non-Key Control" => "form-control key-control key-control-non-key",
+            _ => "form-control"
+        };
+    }
+    #endregion
+
+    #region Attachment Logic
+    private async Task LoadAttachments()
+    {
+        if (currentRcmPoint.SqNo > 0)
+        {
+            attachedFiles = await DbService.GetFilesForPointAsync(currentRcmPoint.SqNo);
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        if (file.Size > MaxFileSize)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"File size exceeds the limit of {MaxFileSize / 1024 / 1024} MB.");
+            return;
+        }
+
+        isUploading = true;
+        StateHasChanged();
+
+        try
+        {
+            using var memoryStream = new MemoryStream();
+            await file.OpenReadStream(MaxFileSize).CopyToAsync(memoryStream);
+
+            var newFile = new RcmPointFilesMaster
+            {
+                RcmPointSqNo = currentRcmPoint.SqNo,
+                FileName = file.Name,
+                FileType = file.ContentType,
+                FileSizeBytes = file.Size,
+                FileData = memoryStream.ToArray(),
+                UploadedBy = currentUserId
+            };
+
+            await DbService.AddFileAsync(newFile);
+            await LoadAttachments();
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error uploading file: {ex.Message}");
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAttachment(int fileSqNo)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this file?"))
+        {
+            try
+            {
+                await DbService.DeleteFileAsync(fileSqNo);
+                await LoadAttachments();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error deleting file: {ex.Message}");
+            }
+            StateHasChanged();
+        }
+    }
+    private bool IsEditButtonDisabled(RcmPointsMaster point)
+    {
+        if (currentUserLoginType == "Consultant")
+        {
+            // For consultants (Makers), enable only for these statuses
+            return !(point.Status == "Saved" || point.Status == "Rejected");
+        }
+
+        if (currentUserLoginType == "Vertical")
+        {
+            // For Vertical/Admin users, enable for these statuses to allow replies
+            return !(point.Status == "Verified" || point.Status == "Admin Submitted" || point.Status == "Management Submitted" || point.Status == "Submitted");
+        }
+
+        // Disable by default for any other case
+        return true;
+    }
+    #endregion
+}

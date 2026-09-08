@@ -1,0 +1,151 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+.sidebar {
+    background-image: linear-gradient(180deg, #46546d 0%, #2c3645 100%);
+}
+
+.top-row {
+    /* MODIFIED: Changed background and removed border for a cleaner look */
+    background-color: transparent;
+    border-bottom: 1px solid #e6e6e6; /* A lighter border */
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+    .top-row ::deep a, .top-row ::deep .btn-link {
+        white-space: nowrap;
+        margin-left: 1.5rem;
+        text-decoration: none;
+        cursor: pointer; /* Ensure the About link looks clickable */
+    }
+
+        .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
+            text-decoration: underline;
+        }
+
+        .top-row ::deep a:first-child {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+@media (max-width: 640.98px) {
+    .top-row {
+        justify-content: space-between;
+    }
+
+        .top-row ::deep a, .top-row ::deep .btn-link {
+            margin-left: 0;
+        }
+}
+
+@media (min-width: 641px) {
+    .page {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 250px;
+        height: 100vh;
+        position: sticky;
+        top: 0;
+    }
+
+    .top-row {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+        .top-row.auth ::deep a:first-child {
+            flex: 1;
+            text-align: right;
+            width: 0;
+        }
+
+    .top-row, article {
+        padding-left: 2rem !important;
+        padding-right: 1.5rem !important;
+    }
+}
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+/* This helps in aligning the user info to the right */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem; /* Adds some space between "Hello, User" and "Logout" */
+}
+
+.sidebar-header {
+    padding: 1.2rem 1rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+    .sidebar-header img {
+        max-height: 45px;
+        border-radius: 8px; /* This creates the smooth, rounded corners */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Adds a subtle shadow for a 3D effect */
+        border: 1px solid rgba(255, 255, 255, 0.2); /* Defines the logo with a soft, light border */
+        transition: all 0.3s ease-in-out; /* Ensures hover effects are smooth */
+    }
+        /* Add this new rule for a nice hover effect */
+        .sidebar-header img:hover {
+            transform: scale(1.05); /* Slightly enlarges the logo */
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3); /* Makes the shadow a bit more prominent */
+        }
+
+.user-info a {
+    color: #dc3545; /* Make logout link red for distinction */
+    font-weight: 500;
+}
+
+main {
+    flex: 1;
+    /* Sets the background for all pages using this layout */
+    background-image: url('images/All Pages Background Image.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed; /* This keeps the background stationary during scroll */
+}
+
+.main-content-container {
+    padding: 1.5rem; /* Add space around the main content card */
+}
+
+/* Style the article tag to look like a card */
+article.content {
+    /*background-color: #ffffff;*/
+    border-radius: 8px;
+    padding: 2rem !important; /* Override default padding for more internal space */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05); /* A subtle shadow to lift the card */
+}

@@ -1,0 +1,311 @@
+﻿@page "/consultants"
+@rendermode InteractiveServer
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using Oracle.ManagedDataAccess.Client
+@inject OracleService DbService
+@inject IJSRuntime JSRuntime
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Consultant Master</PageTitle>
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Existing Consultants</h5>
+        <button class="btn btn-primary" @onclick="OpenAddModal">
+            <i class="bi bi-plus-circle-fill me-2"></i>Add New Consultant
+        </button>
+    </div>
+    <div class="card-body">
+        @if (consultants == null)
+        {
+            <p><em>Loading consultants...</em></p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Consultant ID</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Mobile</th>
+                            <th>Email</th>
+                            <th>Assigned Checker</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var consultant in consultants)
+                        {
+                            <tr>
+                                <td>@consultant.ConsultantId</td>
+                                <td>@consultant.ConsultantName</td>
+                                <td>@consultant.ConsultantType</td>
+                                <td>@consultant.MobileNumber</td>
+                                <td>@consultant.EmailId</td>
+                                <td>@consultant.CheckerName</td>
+                                <td>
+                                    <span class="badge @(consultant.Status == "Active" ? "bg-success" : "bg-danger")">
+                                        @consultant.Status
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenModal(consultant)">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </button>
+
+                                    @if (consultant.Status == "Active")
+                                    {
+                                        <button class="btn btn-sm btn-warning ms-2 action-btn" @onclick="() => ToggleStatusAsync(consultant)">
+                                            <i class="bi bi-person-x"></i> Deactivate
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-success ms-2 action-btn" @onclick="() => ToggleStatusAsync(consultant)">
+                                            <i class="bi bi-person-check"></i> Activate
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4">
+                <Pagination CurrentPage="@currentPage"
+                            TotalPages="@totalPages"
+                            OnPageChanged="OnPageChanged" />
+            </div>
+        }
+    </div>
+</div>
+
+@* --- MODIFIED: Changed IsVisible to @bind-IsOpen and removed OnClose --- *@
+<Modal Title="@modalTitle" @bind-IsOpen="isModalVisible">
+    <Body>
+        @if (consultantInModal != null)
+        {
+            <EditForm Model="@consultantInModal" OnValidSubmit="HandleSubmit" id="modalConsultantForm">
+                <DataAnnotationsValidator />
+                @if (!string.IsNullOrEmpty(statusMessage))
+                {
+                    <div class="@statusMessageCssClass" role="alert">
+                        @statusMessage
+                    </div>
+                }
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Consultant ID</label>
+                        <InputText @bind-Value="consultantInModal.ConsultantId" autocomplete="off" class="form-control" disabled="@(!isAddingNew)" />
+                        <ValidationMessage For="@(() => consultantInModal.ConsultantId)" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Consultant Name</label>
+                        <InputText @bind-Value="consultantInModal.ConsultantName" autocomplete="off" class="form-control" />
+                        <ValidationMessage For="@(() => consultantInModal.ConsultantName)" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Mobile Number</label>
+                        <div class="input-group">
+                            <span class="input-group-text">+91</span>
+                            <InputText @bind-Value="consultantInModal.MobileNumber" class="form-control" autocomplete="off" placeholder="10-digit mobile number" />
+                        </div>
+                        <ValidationMessage For="@(() => consultantInModal.MobileNumber)" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Email ID</label>
+                        <InputText @bind-Value="consultantInModal.EmailId" autocomplete="off" class="form-control" />
+                        <ValidationMessage For="@(() => consultantInModal.EmailId)" />
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Consultant Type</label>
+                        <InputSelect @bind-Value="consultantInModal.ConsultantType" class="form-select">
+                            <option value="Maker">Maker</option>
+                            <option value="Checker">Checker</option>
+                        </InputSelect>
+                    </div>
+                </div>
+
+                @if (consultantInModal.ConsultantType == "Maker")
+                {
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Assign Checker</label>
+                            <InputSelect @bind-Value="consultantInModal.CheckerSqNo" class="form-select">
+                                <option value="">Select a Checker...</option>
+                                @if (availableCheckers != null)
+                                {
+                                    @foreach (var checker in availableCheckers)
+                                    {
+                                        <option value="@checker.SqNo">@checker.ConsultantName (@checker.ConsultantId)</option>
+                                    }
+                                }
+                            </InputSelect>
+                            <ValidationMessage For="@(() => consultantInModal.CheckerSqNo)" />
+                        </div>
+                    </div>
+                }
+            </EditForm>
+        }
+    </Body>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" form="modalConsultantForm">Save Changes</button>
+    </Footer>
+</Modal>
+
+@code {
+    private List<ConsultantMaster>? consultants;
+    private List<ConsultantMaster>? availableCheckers;
+
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalRecords = 0;
+    private int totalPages => (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+    private bool isModalVisible = false;
+    private string modalTitle = "";
+    private bool isAddingNew;
+    private ConsultantMaster consultantInModal = new();
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+    private string? currentUserId;
+
+    private string? statusMessage;
+    private string statusMessageCssClass = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        currentUserId = authState.User.Identity?.Name;
+        await Task.WhenAll(LoadConsultants(currentPage), LoadCheckers());
+    }
+
+    private async Task LoadConsultants(int pageNumber = 1)
+    {
+        consultants = null;
+        var result = await DbService.SearchConsultantsAsync(pageNumber: pageNumber, pageSize: pageSize);
+        consultants = result.Consultants;
+        totalRecords = result.TotalRecords;
+        currentPage = pageNumber;
+        StateHasChanged();
+    }
+
+    private async Task LoadCheckers()
+    {
+        availableCheckers = await DbService.GetCheckersAsync();
+    }
+
+    private async Task OnPageChanged(int newPage)
+    {
+        await Task.WhenAll(LoadConsultants(newPage), LoadCheckers());
+    }
+
+    private void OpenAddModal()
+    {
+        isAddingNew = true;
+        modalTitle = "Add New Consultant";
+        consultantInModal = new ConsultantMaster();
+        isModalVisible = true;
+    }
+
+    private async Task OpenModal(ConsultantMaster consultant)
+    {
+        isAddingNew = false;
+        consultantInModal = await DbService.GetConsultantByIdAsync(consultant.SqNo);
+        modalTitle = $"Edit Consultant ({consultantInModal.ConsultantName})";
+
+        if (consultantInModal.MobileNumber?.StartsWith("+91") == true)
+        {
+            consultantInModal.MobileNumber = consultantInModal.MobileNumber.Substring(3);
+        }
+
+        isModalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        isModalVisible = false;
+        statusMessage = "";
+        statusMessageCssClass = "";
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "User session is invalid. Please log in again.");
+            return;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(consultantInModal.MobileNumber) && !consultantInModal.MobileNumber.StartsWith("+91"))
+            {
+                consultantInModal.MobileNumber = "+91" + consultantInModal.MobileNumber;
+            }
+
+            if (consultantInModal.ConsultantType != "Maker")
+            {
+                consultantInModal.CheckerSqNo = null;
+            }
+
+            if (isAddingNew)
+            {
+                await DbService.AddConsultantAsync(consultantInModal, currentUserId);
+                await JSRuntime.InvokeVoidAsync("alert", "Consultant added successfully!");
+            }
+            else
+            {
+                await DbService.UpdateConsultantAsync(consultantInModal, currentUserId);
+                await JSRuntime.InvokeVoidAsync("alert", "Consultant updated successfully!");
+            }
+
+            CloseModal();
+            await Task.WhenAll(LoadConsultants(isAddingNew ? 1 : currentPage), LoadCheckers());
+        }
+        catch (OracleException ex) when (ex.Number == 1)
+        {
+            statusMessage = "Error: A consultant with this Consultant ID, Mobile Number, or Email already exists. Please check your entries";
+            statusMessageCssClass = "alert alert-danger";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+    }
+
+    private async Task ToggleStatusAsync(ConsultantMaster consultant)
+    {
+        if (string.IsNullOrEmpty(currentUserId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "User session is invalid. Please log in again.");
+            return;
+        }
+
+        var newStatus = consultant.Status == "Active" ? "Inactive" : "Active";
+        var prompt = $"Are you sure you want to change the status of {consultant.ConsultantName} to {newStatus}?";
+        if (await JSRuntime.InvokeAsync<bool>("confirm", prompt))
+        {
+            try
+            {
+                await DbService.SetConsultantStatusAsync(consultant.SqNo, newStatus, currentUserId);
+                await Task.WhenAll(LoadConsultants(currentPage), LoadCheckers());
+            }
+            catch (Exception ex)
+            {
+                statusMessage = $"Error updating status: {ex.Message}";
+                statusMessageCssClass = "alert alert-danger";
+            }
+        }
+    }
+}

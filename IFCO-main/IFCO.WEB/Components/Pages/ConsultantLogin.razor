@@ -1,0 +1,157 @@
+﻿@page "/consultant"
+@layout EmptyLayout
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+@using IFCO.WEB.Controllers
+@using System.ComponentModel.DataAnnotations;
+
+<PageTitle>Consultant Login</PageTitle>
+
+<div class="login-container">
+    <div class="login-card">
+        <h2 class="text-center mb-4">Consultant Login</h2>
+
+        @if (!showOtpInput)
+        {
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLoginSubmit" FormName="loginForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="mb-3">
+                    <label class="form-label">Login ID</label>
+                    <InputText @bind-Value="loginModel.UserId" class="form-control" autocomplete="off" placeholder="Enter your Login ID" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Mobile Number</label>
+                    <div class="input-group">
+                        <span class="input-group-text">+91</span>
+                        <input id="mobileNumberInput" class="form-control" autocomplete="off" placeholder="10-digit mobile number" required />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Security Question</label>
+                    <div class="input-group">
+                        <span class="input-group-text">@captchaQuestion = ?</span>
+                        <InputText @bind-Value="loginModel.UserCaptchaAnswer" class="form-control" autocomplete="off" placeholder="Your Answer" required />
+                    </div>
+                </div>
+
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+            </EditForm>
+
+            <div class="mt-4 text-center border-top pt-3">
+                <a href="/" class="small text-muted text-decoration-none">← Back to Vertical / Admin Login</a>
+            </div>
+        }
+        else
+        {
+            <h5 class="text-center">OTP Verification</h5>
+            <p class="text-center text-muted">An OTP has been sent to your registered mobile number.</p>
+
+            <div>
+                <div class="mb-3">
+                    <label class="form-label">Enter OTP</label>
+                    <input id="otpInput" class="form-control" autocomplete="off" placeholder="Enter 6-digit OTP" required />
+                </div>
+                <div class="d-grid">
+                    <button type="button" class="btn btn-primary" @onclick="HandleOtpSubmit">Verify OTP</button>
+                </div>
+            </div>
+
+            <div class="mt-3 text-center">
+                <span id="otpTimerDisplay" class="text-muted"></span>
+                <button id="resendBtn" type="button" class="btn btn-link" disabled @onclick="ResendOtp">Resend OTP</button>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">@statusMessage</div>
+        }
+    </div>
+</div>
+
+<script src="js/login-encryption.js"></script>
+<script src="js/otp-timer.js"></script>
+
+@code {
+    [SupplyParameterFromQuery] public string? status { get; set; }
+    [SupplyParameterFromQuery] public bool showOtp { get; set; }
+    [SupplyParameterFromQuery] public string? userId { get; set; }
+
+    [Inject] private IJSRuntime JSRuntime { get; set; }
+    [Inject] private NavigationManager NavManager { get; set; }
+
+    private string? statusMessage;
+    private bool showOtpInput = false;
+    private string? userIdForOtp;
+    private string captchaQuestion = "";
+
+    private class LocalLoginModel
+    {
+        [Required(ErrorMessage = "Login ID is required")]
+        [RegularExpression(@"^[a-zA-Z0-9@._-]*$", ErrorMessage = "Invalid characters in Login ID")]
+        public string UserId { get; set; }
+
+        [Required(ErrorMessage = "Security Answer is required")]
+        [RegularExpression(@"^[0-9]+$", ErrorMessage = "Answer must be a number")]
+        public string UserCaptchaAnswer { get; set; }
+    }
+    private LocalLoginModel loginModel = new();
+
+    protected override void OnInitialized()
+    {
+        GenerateCaptcha();
+        showOtpInput = showOtp;
+        userIdForOtp = userId;
+    }
+
+    protected override void OnParametersSet()
+    {
+        switch (status)
+        {
+            case "InvalidCredentials": statusMessage = "Invalid user ID or mobile number."; break;
+            case "AccountInactive": statusMessage = "Your account is Inactive. Please contact an administrator."; break;
+            case "InvalidCaptcha": statusMessage = "Incorrect answer to the security question."; break;
+            case "InvalidOtp": statusMessage = "The OTP you entered is incorrect or has expired."; break;
+            case "OtpSendFailed": statusMessage = "Failed to send OTP. Please try again."; break;
+            case "MaxResendAttempts": statusMessage = "You have reached the maximum number of resend attempts. Please start the login process again."; break;
+            case "AccountLocked": statusMessage = "Your account has been temporarily locked due to too many login attempts. Please try again later."; break;
+        }
+    }
+
+    private void GenerateCaptcha()
+    {
+        var random = new Random();
+        int num1 = random.Next(1, 10);
+        int num2 = random.Next(1, 10);
+        captchaQuestion = $"{num1} + {num2}";
+    }
+
+    private async Task HandleLoginSubmit()
+    {
+        // Notice we hardcode "Consultant" here now since this is the dedicated page
+        await JSRuntime.InvokeVoidAsync("performEncryptedLogin", "Consultant", loginModel.UserId, captchaQuestion, loginModel.UserCaptchaAnswer);
+    }
+
+    private async Task HandleOtpSubmit()
+    {
+        await JSRuntime.InvokeVoidAsync("performOtpVerify", userIdForOtp);
+    }
+
+    private void ResendOtp()
+    {
+        NavManager.NavigateTo($"api/auth/resend-otp-get?userId={userIdForOtp}", true);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (showOtpInput)
+        {
+            await JSRuntime.InvokeVoidAsync("otpTimer.start", 60, "otpTimerDisplay", "resendBtn");
+        }
+    }
+}

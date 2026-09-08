@@ -1,0 +1,220 @@
+﻿@page "/verticals"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = "Admin")]
+
+@rendermode InteractiveServer
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using IFCO.WEB.Components.Shared
+@inject OracleService DbService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Vertical Master</PageTitle>
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Existing Verticals</h5>
+        <button class="btn btn-primary" @onclick="() => OpenModal(null)">
+            <i class="bi bi-plus-circle-fill me-2"></i>Add New Vertical
+        </button>
+    </div>
+    <div class="card-body">
+        @if (verticals == null)
+        {
+            <p><em>Loading verticals...</em></p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Vertical ID</th>
+                            <th>Vertical Name</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var vertical in verticals)
+                        {
+                            <tr>
+                                <td>@vertical.VerticalId</td>
+                                <td>@vertical.VerticalName</td>
+                                <td>
+                                    <span class="badge @(vertical.Status == "Active" ? "bg-success" : "bg-danger")">
+                                        @vertical.Status
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenModal(vertical)">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </button>
+                                    @if (vertical.Status == "Active")
+                                    {
+                                        <button class="btn btn-sm btn-warning ms-2 action-btn" @onclick="() => ToggleStatusAsync(vertical)">
+                                            <i class="bi bi-toggle-off"></i> Deactivate
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-success ms-2 action-btn" @onclick="() => ToggleStatusAsync(vertical)">
+                                            <i class="bi bi-toggle-on"></i> Activate
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4">
+                <Pagination CurrentPage="@currentPage"
+                            TotalPages="@totalPages"
+                            OnPageChanged="OnPageChanged" />
+            </div>
+        }
+    </div>
+</div>
+
+@* --- MODIFIED: Changed IsVisible to @bind-IsOpen and removed OnClose --- *@
+<Modal Title="@modalTitle" @bind-IsOpen="isModalVisible">
+    <Body>
+        @if (verticalInModal != null)
+        {
+            <EditForm @ref="modalForm" Model="@verticalInModal" OnValidSubmit="HandleSubmit" id="modalVerticalForm">
+                <DataAnnotationsValidator />
+                <div class="row">
+                    @if (isAddingNew)
+                    {
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Vertical ID</label>
+                            <InputText @bind-Value="verticalInModal.VerticalId" autocomplete="off" class="form-control" />
+                            <ValidationMessage For="@(() => verticalInModal.VerticalId)" />
+                        </div>
+                    }
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Vertical Name</label>
+                        <InputText @bind-Value="verticalInModal.VerticalName" autocomplete="off" class="form-control" />
+                        <ValidationMessage For="@(() => verticalInModal.VerticalName)" />
+                    </div>
+                </div>
+            </EditForm>
+        }
+    </Body>
+    <Footer>
+        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="TriggerSubmit">Save Changes</button>
+    </Footer>
+</Modal>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+    private string? currentUserId;
+
+    private List<VerticalMaster>? verticals;
+    private int currentPage = 1;
+    private int pageSize = 10;
+    private int totalRecords = 0;
+    private int totalPages => (int)Math.Ceiling(totalRecords / (double)pageSize);
+
+    private bool isModalVisible = false;
+    private bool isAddingNew;
+    private string modalTitle = "";
+    private VerticalMaster verticalInModal = new();
+
+    private EditForm? modalForm;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        currentUserId = authState.User.Identity?.Name;
+        await LoadVerticals(currentPage);
+    }
+
+    private async Task LoadVerticals(int pageNumber = 1)
+    {
+        verticals = null;
+        var result = await DbService.SearchVerticalsAsync(pageNumber: pageNumber, pageSize: pageSize);
+        verticals = result.Verticals;
+        totalRecords = result.TotalRecords;
+        currentPage = pageNumber;
+    }
+
+    private async Task OnPageChanged(int newPage)
+    {
+        await LoadVerticals(newPage);
+    }
+
+    private async Task OpenModal(VerticalMaster? vertical)
+    {
+        if (vertical == null)
+        {
+            isAddingNew = true;
+            modalTitle = "Add New Vertical";
+            verticalInModal = new VerticalMaster();
+        }
+        else
+        {
+            isAddingNew = false;
+            modalTitle = $"Edit Vertical ({vertical.VerticalName})";
+            verticalInModal = await DbService.GetVerticalByIdAsync(vertical.SqNo);
+        }
+        isModalVisible = true;
+    }
+
+    private void CloseModal() => isModalVisible = false;
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+        try
+        {
+            if (isAddingNew)
+            {
+                await DbService.AddVerticalAsync(verticalInModal, currentUserId);
+            }
+            else
+            {
+                await DbService.UpdateVerticalAsync(verticalInModal, currentUserId);
+            }
+            CloseModal();
+            await LoadVerticals(isAddingNew ? 1 : currentPage);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task TriggerSubmit()
+    {
+        if (modalForm?.EditContext != null)
+        {
+            if (modalForm.EditContext.Validate())
+            {
+                await HandleSubmit();
+            }
+        }
+    }
+
+    private async Task ToggleStatusAsync(VerticalMaster vertical)
+    {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+        var newStatus = vertical.Status == "Active" ? "Inactive" : "Active";
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Change status of '{vertical.VerticalName}' to {newStatus}?"))
+        {
+            try
+            {
+                await DbService.SetVerticalStatusAsync(vertical.SqNo, newStatus, currentUserId);
+                await LoadVerticals(currentPage);
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            }
+        }
+    }
+}

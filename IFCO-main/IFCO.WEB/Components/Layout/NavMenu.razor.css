@@ -1,0 +1,77 @@
+/* --- NEW AND IMPROVED NavMenu STYLES --- */
+
+.nav-item {
+    font-size: 1rem; /* Slightly larger font for better readability */
+    padding-bottom: 0.5rem;
+}
+
+    .nav-item:first-of-type {
+        padding-top: 1rem;
+    }
+
+    .nav-item:last-of-type {
+        padding-bottom: 1rem;
+    }
+
+    /* This is the main style for each navigation link */
+    .nav-item ::deep .nav-link {
+        color: #adb5bd; /* A softer white for inactive links */
+        background: none;
+        border: none;
+        border-radius: 6px; /* A slightly more pronounced border-radius */
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 0.75rem 1.5rem; /* Increased padding for a less cramped feel */
+        position: relative;
+        /* The key to a "smooth" feel! Animate all changes over 0.2 seconds. */
+        transition: all 0.2s ease-in-out;
+    }
+
+        /* Styling for the icons within the links */
+        .nav-item ::deep .nav-link .bi {
+            font-size: 1.2rem; /* Make icons slightly larger */
+            margin-right: 1rem; /* Increase space between icon and text */
+            transition: color 0.2s ease-in-out;
+        }
+
+        /* --- A more dynamic hover effect --- */
+        .nav-item ::deep .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.05); /* A very subtle background highlight */
+            color: #ffffff; /* Make text pure white on hover */
+            transform: translateX(4px); /* Gently move the link to the right on hover */
+        }
+
+            .nav-item ::deep .nav-link:hover .bi {
+                color: #ffffff; /* Ensure icon is also pure white on hover */
+            }
+
+    /* --- A refined style for the active link --- */
+    .nav-item ::deep a.active {
+        background-color: rgba(255, 255, 255, 0.1); /* Give the active link a distinct background */
+        color: #ffffff;
+        font-weight: 500;
+    }
+
+        /* This is the colored bar on the left of the active link */
+        .nav-item ::deep a.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15%;
+            height: 70%;
+            width: 5px; /* Make the bar slightly thicker */
+            background-color: #0d6efd; /* A bright, modern blue */
+            border-radius: 0 4px 4px 0;
+        }
+
+        .nav-item ::deep a.active .bi {
+            color: #ffffff;
+        }
+
+/* --- Styles for the scrollable container --- */
+.nav-scrollable {
+    display: block;
+    height: calc(100vh - 75px);
+    overflow-y: auto;
+}

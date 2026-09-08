@@ -1,0 +1,43 @@
+﻿@using IFCO.WEB.Models
+@rendermode InteractiveServer
+
+@* This anchor tag will inherit the styles from MainLayout because of the ::deep selector *@
+<a href="javascript:void(0)" @onclick="OpenModal">About</a>
+
+@if (showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">About Application</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-dark">
+                    <p class="fw-bold">Developed by DIT, Union Bank Of India on 2025.</p>
+                    <p class="text-muted small">Copyrights & Reserve to Union Bank Of India.</p>
+                    <hr />
+                    <p><strong>Application Owner:</strong><br />Finance and Accounts Vertical</p>
+                    <p><strong>Support:</strong><br />Contact Finance and Accounts team for any application support related activities.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool showModal = false;
+
+    private void OpenModal()
+    {
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+    }
+}

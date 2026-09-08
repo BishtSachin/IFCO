@@ -1,0 +1,74 @@
+﻿@page "/"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@using IFCO.WEB.Services
+@using Microsoft.Extensions.Options
+@inject NavigationManager NavManager
+@inject IOptions<ApiSettings> AppSettings
+
+<PageTitle>Vertical User Login</PageTitle>
+
+<div class="login-container">
+    <div class="login-card text-center">
+        <h2 class="mb-4">IFCO-FR Access</h2>
+
+        <div class="mb-4 p-4 border rounded" style="background-color: #f8f9fa;">
+            <h5 class="text-primary mb-3">Vertical / Admin Users</h5>
+            <p class="text-muted mb-4">Kindly login into My diary application for accessing this application.</p>
+
+            <a href="@myDiaryUrl" class="btn btn-primary px-4 py-2">Go to My Diary</a>
+        </div>
+
+        <div class="mt-4 pt-3 border-top">
+            <p class="small text-muted mb-2">Are you an External Consultant?</p>
+            <a href="consultant" class="btn btn-outline-secondary btn-sm">Consultant Login</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div class="alert alert-danger mt-3" role="alert">@statusMessage</div>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? status { get; set; }
+
+    // This captures the payload if MyDiary redirects them here
+    [SupplyParameterFromQuery] public string? data { get; set; }
+
+    private string? statusMessage;
+    private string myDiaryUrl = "";
+
+    protected override void OnInitialized()
+    {
+        // Load URL from configuration, with a safe fallback just in case
+        myDiaryUrl = AppSettings.Value.MyDiaryUrl ?? "#";
+
+        // If the URL contains the encrypted token from My Diary, immediately route them to the AuthController
+        if (!string.IsNullOrEmpty(data))
+        {
+            NavManager.NavigateTo($"api/auth/sso?data={Uri.EscapeDataString(data)}", forceLoad: true);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        switch (status)
+        {
+            case "NoPermission":
+                statusMessage = "You don't have permission to access this application. Kindly contact application admin team for providing the access to you.";
+                break;
+            case "InvalidToken":
+            case "TokenExpired":
+                statusMessage = "Invalid or expired session. Kindly login into My diary application for accessing this application.";
+                break;
+            case "AccountInactive":
+                statusMessage = "Your account is Inactive. Please contact an administrator.";
+                break;
+            case "LoggedOut":
+                statusMessage = "You have been successfully logged out.";
+                break;
+        }
+    }
+}

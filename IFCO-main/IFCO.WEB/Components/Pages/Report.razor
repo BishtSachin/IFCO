@@ -1,0 +1,244 @@
+﻿@page "/reports"
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using System.Security.Claims
+@inject OracleService DbService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin, Vertical, Checker")]
+
+<PageTitle>Generate Reports</PageTitle>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Generate Reports</h5>
+    </div>
+    <div class="card-body">
+
+        @* 1. Main Selection Options *@
+        <div class="mb-4">
+            <label class="form-label fw-bold">Select Report Type:</label>
+            <div class="d-flex gap-4">
+
+                @* HIDE Vertical Wise option if the user is a Vertical User *@
+                @if (!isVerticalUser)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="reportType" id="optVertical"
+                               checked="@(selectedReportType == "Vertical")"
+                               @onchange="@(() => OnReportTypeChanged("Vertical"))">
+                        <label class="form-check-label" for="optVertical">Vertical Wise</label>
+                    </div>
+                }
+
+                @* ALWAYS Show RCM Wise option *@
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="reportType" id="optRcm"
+                           checked="@(selectedReportType == "RCM")"
+                           @onchange="@(() => OnReportTypeChanged("RCM"))">
+                    <label class="form-check-label" for="optRcm">RCM Wise</label>
+                </div>
+
+                @* HIDE Custom Dates option if the user is a Vertical User *@
+                @if (!isVerticalUser)
+                {
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="reportType" id="optDate"
+                               checked="@(selectedReportType == "Date")"
+                               @onchange="@(() => OnReportTypeChanged("Date"))">
+                        <label class="form-check-label" for="optDate">Custom Dates</label>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <hr />
+
+        @* 2. Dynamic Inputs based on Selection *@
+        <div class="row">
+
+            @if (selectedReportType == "Vertical")
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Select Vertical:</label>
+                    <select class="form-select" @bind="selectedVerticalId">
+                        <option value="">-- Select Vertical --</option>
+                        @if (verticalsList != null)
+                        {
+                            @foreach (var v in verticalsList)
+                            {
+                                <option value="@v.VerticalId">@v.VerticalName</option>
+                            }
+                        }
+                    </select>
+                </div>
+            }
+            else if (selectedReportType == "RCM")
+            {
+                <div class="col-md-6">
+                    <label class="form-label">Select RCM:</label>
+                    <select class="form-select" @bind="selectedRcmId">
+                        <option value="">-- Select RCM --</option>
+                        @if (rcmList != null)
+                        {
+                            @foreach (var r in rcmList)
+                            {
+                                <option value="@r.RcmSqNo">@r.RcmName</option>
+                            }
+                        }
+                    </select>
+                </div>
+            }
+            else if (selectedReportType == "Date")
+            {
+                <div class="col-md-3">
+                    <label class="form-label">From Date:</label>
+                    <input type="date" class="form-control" @bind="fromDate" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">To Date:</label>
+                    <input type="date" class="form-control" @bind="toDate" />
+                </div>
+            }
+        </div>
+
+        @* 3. Download Button *@
+        <div class="mt-4">
+            <button class="btn btn-success" @onclick="DownloadReport" disabled="@isDownloading">
+                @if (isDownloading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>Generating...</span>
+                }
+                else
+                {
+                    <i class="bi bi-download me-2"></i> <span>Download Excel Report</span>
+                }
+            </button>
+        </div>
+
+    </div>
+</div>
+
+@code {
+    // Auth State
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+
+    private bool isVerticalUser = false;
+    private string? userVerticalIdClaim;
+
+    // State Variables
+    private string selectedReportType = "Vertical";
+    private string? selectedVerticalId;
+    private string? selectedRcmId;
+    private DateTime? fromDate;
+    private DateTime? toDate;
+    private bool isDownloading = false;
+
+    // Dropdown Data
+    private List<VerticalDropdownItem>? verticalsList;
+    private List<RcmDropdownItem>? rcmList;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Identify User Role and Vertical ID
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            // Check based on logic in AuthController.cs
+            var roleClaim = user.FindFirst(ClaimTypes.Role)?.Value;
+            var loginTypeClaim = user.FindFirst("LoginType")?.Value;
+            userVerticalIdClaim = user.FindFirst("VerticalId")?.Value;
+
+            if (loginTypeClaim == "Vertical" && roleClaim == "Vertical")
+            {
+                isVerticalUser = true;
+                selectedReportType = "RCM"; // Force RCM mode
+            }
+        }
+
+        // 2. Load Data based on Role
+        if (isVerticalUser)
+        {
+            // Vertical User: Only load RCMs mapped to their vertical
+            if (!string.IsNullOrEmpty(userVerticalIdClaim))
+            {
+                rcmList = await DbService.GetActiveRcmsByVerticalAsync(userVerticalIdClaim);
+            }
+            else
+            {
+                // Safety check if claim is missing
+                await JSRuntime.InvokeVoidAsync("alert", "Error: Vertical ID not found for user.");
+            }
+        }
+        else
+        {
+            // Admin User: Load everything normally
+            verticalsList = await DbService.GetActiveVerticalsAsync();
+            // Assuming you have this method or the one from previous steps
+            rcmList = await DbService.GetActiveRcmsAsyncForReport();
+        }
+    }
+
+    private void OnReportTypeChanged(string newType)
+    {
+        selectedReportType = newType;
+
+        // Reset inputs
+        selectedVerticalId = null;
+        selectedRcmId = null;
+        fromDate = null;
+        toDate = null;
+    }
+
+    private async Task DownloadReport()
+    {
+        // Validation
+        if (selectedReportType == "Vertical" && string.IsNullOrEmpty(selectedVerticalId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select a Vertical.");
+            return;
+        }
+        if (selectedReportType == "RCM" && string.IsNullOrEmpty(selectedRcmId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select an RCM.");
+            return;
+        }
+        if (selectedReportType == "Date" && (fromDate == null || toDate == null))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select both From and To dates.");
+            return;
+        }
+
+        try
+        {
+            isDownloading = true;
+
+            var fileBytes = await DbService.GenerateReportExcelAsync(
+                selectedReportType,
+                selectedVerticalId,
+                selectedRcmId,
+                fromDate,
+                toDate
+            );
+
+            using var stream = new MemoryStream(fileBytes);
+            using var streamRef = new DotNetStreamReference(stream);
+
+            string fileName = $"Report_{selectedReportType}_{DateTime.Now:yyyyMMddHHmm}.xlsx";
+
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error generating report: {ex.Message}");
+        }
+        finally
+        {
+            isDownloading = false;
+        }
+    }
+}

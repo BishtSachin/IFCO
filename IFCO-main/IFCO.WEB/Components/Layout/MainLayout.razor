@@ -1,0 +1,68 @@
+﻿@inherits LayoutComponentBase
+@using IFCO.WEB.Components.Pages
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IFCO.WEB.Services.OracleService DbService
+
+<div class="page">
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <img src="images/Bank Logo.jpg" alt="Company Logo" />
+        </div>
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+
+            @* --- REPLACE THE OLD <a> LINK WITH THIS COMPONENT --- *@
+            <AboutApplication />
+
+            <AuthorizeView>
+                <Authorized>
+                    <div class="user-info">
+                        <span>Hello, @context.User.FindFirst("DisplayName")?.Value</span>
+                        <a href="api/auth/logout">Logout</a>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/">Login</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+        <div class="main-content-container">
+            <article class="content px-4">
+                @Body
+            </article>
+        </div>
+    </main>
+</div>
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Get the current user's state
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity != null && user.Identity.IsAuthenticated)
+        {
+            var userId = user.Identity.Name;
+            var loginType = user.FindFirst("LoginType")?.Value;
+            var claimToken = user.FindFirst("SessionToken")?.Value;
+
+            if (!string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(loginType) && !string.IsNullOrEmpty(claimToken))
+            {
+                // Fetch the "official" token from the DB
+                var dbToken = await DbService.GetSessionTokenAsync(userId, loginType);
+
+                // If they don't match, it means a newer login occurred elsewhere
+                if (dbToken != claimToken)
+                {
+                    // Force Logout
+                    NavManager.NavigateTo("api/auth/logout?status=ConcurrentLogin", true);
+                }
+            }
+        }
+    }
+}

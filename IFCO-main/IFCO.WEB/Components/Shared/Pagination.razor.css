@@ -1,0 +1,4 @@
+﻿/* Make the pagination links feel more clickable */
+.page-link {
+    cursor: pointer;
+}

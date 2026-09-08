@@ -1,0 +1,63 @@
+﻿/* File: IFCO.WEB/Components/Pages/RcmPoints.razor.css */
+
+::deep .table-hover tbody tr:hover {
+    background-color: #f0f8ff;
+    cursor: default;
+}
+
+/* Base styles for the calculated fields */
+::deep .form-control.risk-cat,
+::deep .form-control.control-strength,
+::deep .form-control.key-control {
+    font-weight: bold;
+    color: #fff !important;
+    text-align: center;
+}
+
+/* Risk Category Colors */
+::deep .form-control.risk-cat-low {
+    background-color: #198754 !important; /* Green */
+}
+
+::deep .form-control.risk-cat-medium {
+    background-color: #ffc107 !important; /* Yellow */
+    color: #000 !important; /* Black text for yellow bg */
+}
+
+::deep .form-control.risk-cat-high {
+    background-color: #dc3545 !important; /* Red */
+}
+
+/* Control Strength Colors */
+::deep .form-control.control-strength-strong {
+    background-color: #198754 !important; /* Green */
+}
+
+::deep .form-control.control-strength-limited {
+    background-color: #ffc107 !important; /* Yellow */
+    color: #000 !important;
+}
+
+/* NEW: Key Control Colors */
+::deep .form-control.key-control-non-key {
+    background-color: #198754 !important; /* Green */
+}
+
+::deep .form-control.key-control-key {
+    background-color: #ffc107 !important; /* Yellow */
+    color: #000 !important;
+}
+
+/* Make accordion headers slightly more compact */
+::deep .accordion-button {
+    padding: 0.8rem 1.25rem;
+    font-size: 1rem;
+}
+
+/* NEW: Reusable class to make form sections read-only */
+::deep .form-readonly .form-control,
+::deep .form-readonly .form-select {
+    pointer-events: none; /* Prevents clicks, typing, and changes */
+    background-color: #e9ecef; /* Standard disabled/readonly background color */
+    opacity: 1; /* Ensure text is readable */
+}

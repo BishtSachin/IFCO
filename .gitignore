@@ -1,0 +1,8 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/IFCO-main/.vs/IFCO
+/IFCO-main/IFCO.WEB/obj
+/IFCO-main/IFCO.WEB/appsettings.json
+/IFCO-main/IFCO.WEB/appsettings.Development.json

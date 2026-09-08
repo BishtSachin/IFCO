@@ -1,0 +1,11 @@
+﻿/* app-background.css */
+
+.global-background {
+    background-image: url('images/All Pages Background Image.png'); /* Make sure the path is correct */
+    background-size: cover; /* Covers the entire element */
+    background-position: center; /* Centers the background image */
+    background-repeat: no-repeat; /* Prevents the image from repeating */
+    min-height: 100vh; /* Ensures it covers the full viewport height */
+    /* You might need to adjust other properties like margin, padding, etc.,
+       depending on your layout to prevent scrollbars or overlaps. */
+}
