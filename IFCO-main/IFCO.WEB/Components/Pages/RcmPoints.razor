@@ -22,16 +22,14 @@
         <div class="row align-items-end">
             <div class="col-md-10">
                 <label class="form-label fw-bold">Select Your Assigned RCM:</label>
-                <InputSelect @bind-Value="SelectedRcmSqNo" class="form-select">
-                    <option value="0">-- Please select an RCM --</option>
-                    @if (rcmsForDropdown != null)
-                    {
-                        @foreach (var rcm in rcmsForDropdown)
-                        {
-                            <option value="@rcm.SqNo">@rcm.RcmName (@rcm.RcmId)</option>
-                        }
-                    }
-                </InputSelect>
+                <SearchableSelect TItem="RcmMaster"
+                                  TValue="int"
+                                  Items="rcmsForDropdown"
+                                  ValueSelector="@(rcm => rcm.SqNo)"
+                                  TextSelector="@(rcm => $"{rcm.RcmName} ({rcm.RcmId})")"
+                                  SelectedValue="SelectedRcmSqNo"
+                                  SelectedValueChanged="OnSelectedRcmChanged"
+                                  Placeholder="-- Please select an RCM --" />
             </div>
         </div>
     </div>
@@ -56,7 +54,7 @@
                 <div class="col-md-4">
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input type="text" autocomplete="off" class="form-control" placeholder="Search by Process or Risk..." @bind="searchTerm" @bind:event="oninput" />
+                        <input type="text" autocomplete="off" class="form-control" placeholder="Search by Process or Risk..." value="@searchTerm" @oninput="OnSearchTermChanged" />
                     </div>
                 </div>
             </div>
@@ -678,6 +676,8 @@
 
     // --- Cascading Dropdown State ---
 
+    private void OnSelectedRcmChanged(int value) => SelectedRcmSqNo = value;
+
     private int _selectedRcmSqNo;
     public int SelectedRcmSqNo
     {
@@ -805,6 +805,7 @@
             // Pass the new filter to the service
             var result = await DbService.SearchRcmPointsAsync(
                 rcmSqNo: SelectedRcmSqNo,
+                searchTerm: searchTerm,
                 status: statusFilter,
                 pageNumber: pageNumber,
                 pageSize: pageSize);
@@ -828,6 +829,30 @@
     private async Task OnPageChanged(int newPage)
     {
         await LoadRcmPoints(newPage);
+    }
+
+    // Debounced so we don't hit the DB on every keystroke - waits 400ms
+    // after the user stops typing before re-running the search.
+    private CancellationTokenSource? searchDebounceCts;
+
+    private async Task OnSearchTermChanged(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+
+        searchDebounceCts?.Cancel();
+        searchDebounceCts = new CancellationTokenSource();
+        var token = searchDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(400, token);
+            if (!token.IsCancellationRequested)
+            {
+                currentPage = 1; // reset paging on a new search
+                await LoadRcmPoints(currentPage);
+            }
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task OpenModal(RcmPointsMaster? point, bool viewMode = false)

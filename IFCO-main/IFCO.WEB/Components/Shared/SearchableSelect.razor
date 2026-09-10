@@ -1,0 +1,168 @@
+﻿@typeparam TItem
+@typeparam TValue
+
+<div class="searchable-select-wrapper position-relative" @onfocusout="OnFocusOut">
+    <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input type="text"
+               class="form-control"
+               placeholder="@Placeholder"
+               value="@(isOpen ? searchText : DisplayText)"
+               @oninput="OnSearchInput"
+               @onfocus="OnFocus"
+               @onkeydown="OnKeyDown"
+               disabled="@Disabled"
+               autocomplete="off" />
+    </div>
+
+    @if (isOpen)
+    {
+        <div class="searchable-select-dropdown shadow-sm border rounded bg-white position-absolute w-100">
+            @if (!FilteredItems.Any())
+            {
+                <div class="px-3 py-2 text-muted small">No matches found</div>
+            }
+            else
+            {
+                @for (int i = 0; i < FilteredItems.Count; i++)
+                {
+                    var item = FilteredItems[i];
+                    var currentIndex = i;
+                    <button type="button"
+                            class="searchable-select-item w-100 text-start border-0 bg-transparent px-3 py-2 @(currentIndex == activeIndex ? "active" : "")"
+                            @onclick="() => SelectItem(item)">
+                        @TextSelector(item)
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
+
+    [Parameter, EditorRequired]
+    public Func<TItem, TValue> ValueSelector { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public Func<TItem, string> TextSelector { get; set; } = default!;
+
+    // Non-nullable by design: default(TValue) (0 for int, null for a
+    // reference type like string) is treated as "nothing selected", which
+    // matches the SqNo == 0 convention already used across this codebase.
+    [Parameter]
+    public TValue SelectedValue { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<TValue> SelectedValueChanged { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "-- Please select --";
+
+    [Parameter]
+    public bool Disabled { get; set; } = false;
+
+    private bool isOpen = false;
+    private string searchText = "";
+    private int activeIndex = -1;
+    private CancellationTokenSource? closeCts;
+
+    // Component always alphabetizes the list it renders - callers don't
+    // need to sort before passing Items in.
+    private List<TItem> SortedItems =>
+        (Items ?? Enumerable.Empty<TItem>())
+            .OrderBy(TextSelector, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<TItem> FilteredItems =>
+        string.IsNullOrWhiteSpace(searchText)
+            ? SortedItems
+            : SortedItems.Where(i => TextSelector(i).Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private string DisplayText
+    {
+        get
+        {
+            if (EqualityComparer<TValue>.Default.Equals(SelectedValue, default!))
+                return "";
+
+            var match = SortedItems.FirstOrDefault(i => EqualityComparer<TValue>.Default.Equals(ValueSelector(i), SelectedValue));
+            return match is null ? "" : TextSelector(match);
+        }
+    }
+
+    private void OnFocus()
+    {
+        closeCts?.Cancel();
+        isOpen = true;
+        searchText = "";
+        activeIndex = -1;
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? "";
+        activeIndex = -1;
+    }
+
+    // There's no EditContext/JS interop in this component, so "click outside
+    // to close" is handled with a short delay on blur instead of real
+    // click-outside detection. The delay gives the button's own @onclick a
+    // chance to fire and cancel this before the dropdown actually closes -
+    // see SelectItem below.
+    private async Task OnFocusOut()
+    {
+        closeCts?.Cancel();
+        closeCts = new CancellationTokenSource();
+        var token = closeCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            if (!token.IsCancellationRequested)
+            {
+                isOpen = false;
+                searchText = "";
+                StateHasChanged();
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task SelectItem(TItem item)
+    {
+        closeCts?.Cancel();
+        var value = ValueSelector(item);
+        SelectedValue = value;
+        await SelectedValueChanged.InvokeAsync(value);
+        isOpen = false;
+        searchText = "";
+        activeIndex = -1;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (!isOpen) return;
+        var items = FilteredItems;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                activeIndex = items.Count == 0 ? -1 : Math.Min(activeIndex + 1, items.Count - 1);
+                break;
+            case "ArrowUp":
+                activeIndex = Math.Max(activeIndex - 1, 0);
+                break;
+            case "Enter":
+                if (activeIndex >= 0 && activeIndex < items.Count)
+                    await SelectItem(items[activeIndex]);
+                break;
+            case "Escape":
+                closeCts?.Cancel();
+                isOpen = false;
+                searchText = "";
+                break;
+        }
+    }
+}

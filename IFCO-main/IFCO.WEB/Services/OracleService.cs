@@ -970,7 +970,7 @@ namespace IFCO.WEB.Services
             return rcms;
         }
 
-        public async Task<(List<RcmPointsMaster> Points, int TotalRecords)> SearchRcmPointsAsync(int rcmSqNo, string? status = null, int pageNumber = 1, int pageSize = 10)
+        public async Task<(List<RcmPointsMaster> Points, int TotalRecords)> SearchRcmPointsAsync(int rcmSqNo, string? searchTerm = null, string? status = null, int pageNumber = 1, int pageSize = 10)
         {
             try
             {
@@ -984,7 +984,11 @@ namespace IFCO.WEB.Services
                     {
                         command.CommandType = CommandType.StoredProcedure;
 
-                        command.Parameters.Add("p_SEARCH_TERM", OracleDbType.Varchar2, null, ParameterDirection.Input);
+                        // NOTE: parameters are bound positionally (BindByName is not set on
+                        // this command), so this MUST stay first to match p_SEARCH_TERM in
+                        // the package signature. Previously always sent as null - the search
+                        // box UI was never actually wired up to it.
+                        command.Parameters.Add("p_SEARCH_TERM", OracleDbType.Varchar2, string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, ParameterDirection.Input);
                         command.Parameters.Add("p_RCM_SQ_NO", OracleDbType.Int32, rcmSqNo, ParameterDirection.Input);
                         // MODIFIED: Pass the status parameter to the database
                         command.Parameters.Add("p_STATUS", OracleDbType.NVarchar2, status, ParameterDirection.Input);
