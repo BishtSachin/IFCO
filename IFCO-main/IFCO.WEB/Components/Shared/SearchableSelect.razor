@@ -66,6 +66,7 @@
 
     private bool isOpen = false;
     private string searchText = "";
+    private bool userHasTyped = false;
     private int activeIndex = -1;
     private CancellationTokenSource? closeCts;
 
@@ -76,8 +77,11 @@
             .OrderBy(TextSelector, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+    // Only filters once the user has actually typed something. Before that
+    // (box just opened via click/focus), show the full list rather than a
+    // list filtered down to whatever text happens to be prefilled.
     private List<TItem> FilteredItems =>
-        string.IsNullOrWhiteSpace(searchText)
+        !userHasTyped || string.IsNullOrWhiteSpace(searchText)
             ? SortedItems
             : SortedItems.Where(i => TextSelector(i).Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -97,13 +101,19 @@
     {
         closeCts?.Cancel();
         isOpen = true;
-        searchText = "";
+        // NEW: prefill with the current selection instead of blanking it -
+        // so the box never visually contradicts what's actually selected
+        // (and what the rest of the page is still showing) until the user
+        // actually types something to search for.
+        searchText = DisplayText;
+        userHasTyped = false;
         activeIndex = -1;
     }
 
     private void OnSearchInput(ChangeEventArgs e)
     {
         searchText = e.Value?.ToString() ?? "";
+        userHasTyped = true;
         activeIndex = -1;
     }
 
@@ -124,6 +134,7 @@
             {
                 isOpen = false;
                 searchText = "";
+                userHasTyped = false;
                 StateHasChanged();
             }
         }
@@ -138,6 +149,7 @@
         await SelectedValueChanged.InvokeAsync(value);
         isOpen = false;
         searchText = "";
+        userHasTyped = false;
         activeIndex = -1;
     }
 
@@ -162,6 +174,7 @@
                 closeCts?.Cancel();
                 isOpen = false;
                 searchText = "";
+                userHasTyped = false;
                 break;
         }
     }
