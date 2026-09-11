@@ -61,32 +61,28 @@
             {
                 <div class="col-md-6">
                     <label class="form-label">Select Vertical:</label>
-                    <select class="form-select" @bind="selectedVerticalId">
-                        <option value="">-- Select Vertical --</option>
-                        @if (verticalsList != null)
-                        {
-                            @foreach (var v in verticalsList)
-                            {
-                                <option value="@v.VerticalId">@v.VerticalName</option>
-                            }
-                        }
-                    </select>
+                    <SearchableSelect TItem="VerticalDropdownItem"
+                                      TValue="string"
+                                      Items="verticalsList"
+                                      ValueSelector="@(v => v.VerticalId)"
+                                      TextSelector="@(v => v.VerticalName)"
+                                      SelectedValue="selectedVerticalId"
+                                      SelectedValueChanged="@((string v) => selectedVerticalId = v)"
+                                      Placeholder="-- Select Vertical --" />
                 </div>
             }
             else if (selectedReportType == "RCM")
             {
                 <div class="col-md-6">
                     <label class="form-label">Select RCM:</label>
-                    <select class="form-select" @bind="selectedRcmId">
-                        <option value="">-- Select RCM --</option>
-                        @if (rcmList != null)
-                        {
-                            @foreach (var r in rcmList)
-                            {
-                                <option value="@r.RcmSqNo">@r.RcmName</option>
-                            }
-                        }
-                    </select>
+                    <SearchableSelect TItem="RcmDropdownItem"
+                                      TValue="string"
+                                      Items="rcmList"
+                                      ValueSelector="@(r => r.RcmSqNo)"
+                                      TextSelector="@(r => r.RcmName)"
+                                      SelectedValue="selectedRcmId"
+                                      SelectedValueChanged="@((string v) => selectedRcmId = v)"
+                                      Placeholder="-- Select RCM --" />
                 </div>
             }
             else if (selectedReportType == "Date")

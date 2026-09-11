@@ -109,16 +109,15 @@
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Assign to Vertical</label>
-                        <InputSelect @bind-Value="userInModal.VerticalId" class="form-select" disabled="@(userInModal.UserType == "Admin")">
-                            <option value="">-- Select Vertical --</option>
-                            @if (verticalsForDropdown != null)
-                            {
-                                @foreach (var vertical in verticalsForDropdown)
-                                {
-                                    <option value="@vertical.VerticalId">@vertical.VerticalName</option>
-                                }
-                            }
-                        </InputSelect>
+                        <SearchableSelect TItem="VerticalMaster"
+                                          TValue="string"
+                                          Items="verticalsForDropdown"
+                                          ValueSelector="@(v => v.VerticalId ?? string.Empty)"
+                                          TextSelector="@(v => v.VerticalName ?? string.Empty)"
+                                          SelectedValue="userInModal.VerticalId"
+                                          SelectedValueChanged="@((string v) => userInModal.VerticalId = v)"
+                                          Disabled="@(userInModal.UserType == "Admin")"
+                                          Placeholder="-- Select Vertical --" />
                     </div>
                 </div>
             </EditForm>

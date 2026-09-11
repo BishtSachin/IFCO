@@ -333,16 +333,14 @@
                                             </div>
                                             <div class="mb-3">
                                                 <label class="form-label">Control Department</label>
-                                                <InputSelect @bind-Value="currentRcmPoint.ControlDept" class="form-select">
-                                                    <option value="">-- Select Department --</option>
-                                                    @if (controlDepartmentOptions != null)
-                                                    {
-                                                        @foreach (var vertical in controlDepartmentOptions)
-                                                        {
-                                                            <option value="@vertical.VerticalId">@vertical.VerticalName</option>
-                                                        }
-                                                    }
-                                                </InputSelect>
+                                                <SearchableSelect TItem="VerticalMaster"
+                                                                  TValue="string"
+                                                                  Items="controlDepartmentOptions"
+                                                                  ValueSelector="@(v => v.VerticalId ?? string.Empty)"
+                                                                  TextSelector="@(v => v.VerticalName ?? string.Empty)"
+                                                                  SelectedValue="currentRcmPoint.ControlDept"
+                                                                  SelectedValueChanged="@((string v) => currentRcmPoint.ControlDept = v)"
+                                                                  Placeholder="-- Select Department --" />
                                                 <ValidationMessage For="@(() => currentRcmPoint.ControlDept)" />
                                             </div>
                                             <div class="row">

@@ -138,16 +138,14 @@
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Assign Checker</label>
-                            <InputSelect @bind-Value="consultantInModal.CheckerSqNo" class="form-select">
-                                <option value="">Select a Checker...</option>
-                                @if (availableCheckers != null)
-                                {
-                                    @foreach (var checker in availableCheckers)
-                                    {
-                                        <option value="@checker.SqNo">@checker.ConsultantName (@checker.ConsultantId)</option>
-                                    }
-                                }
-                            </InputSelect>
+                            <SearchableSelect TItem="ConsultantMaster"
+                                              TValue="int?"
+                                              Items="availableCheckers"
+                                              ValueSelector="@(c => c.SqNo)"
+                                              TextSelector="@(c => $"{c.ConsultantName} ({c.ConsultantId})")"
+                                              SelectedValue="consultantInModal.CheckerSqNo"
+                                              SelectedValueChanged="@((int? v) => consultantInModal.CheckerSqNo = v)"
+                                              Placeholder="Select a Checker..." />
                             <ValidationMessage For="@(() => consultantInModal.CheckerSqNo)" />
                         </div>
                     </div>
