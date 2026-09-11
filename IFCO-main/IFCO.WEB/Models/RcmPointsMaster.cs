@@ -63,6 +63,12 @@ namespace IFCO.WEB.Models
         public string? UpdatedBy { get; set; }
         public DateTime? UpdatedDate { get; set; }
 
+        // NEW (Point 2 - Checker edit enablement): who last touched core
+        // details ("Maker" or "Checker"), and the Checker's required note
+        // when they're the one who made the edit.
+        public string? LastEditedByRole { get; set; }
+        public string? CheckerRemarks { get; set; }
+
         // Joined fields for display
         public string? RcmName { get; set; }
         public string? VerticalName { get; set; }

@@ -1270,7 +1270,9 @@ namespace IFCO.WEB.Services
                                     ManagementReply = reader.IsDBNull(reader.GetOrdinal("MANAGEMENT_REPLY")) ? null : reader.GetString(reader.GetOrdinal("MANAGEMENT_REPLY")),
                                     RejectionReason = reader.IsDBNull(reader.GetOrdinal("REJECTION_REASON")) ? null : reader.GetString(reader.GetOrdinal("REJECTION_REASON")),
                                     AdminReply = reader.IsDBNull(reader.GetOrdinal("ADMIN_REPLY")) ? null : reader.GetString(reader.GetOrdinal("ADMIN_REPLY")),
-                                    Status = reader.GetString(reader.GetOrdinal("STATUS"))
+                                    Status = reader.GetString(reader.GetOrdinal("STATUS")),
+                                    LastEditedByRole = reader.IsDBNull(reader.GetOrdinal("LAST_EDITED_BY_ROLE")) ? null : reader.GetString(reader.GetOrdinal("LAST_EDITED_BY_ROLE")),
+                                    CheckerRemarks = reader.IsDBNull(reader.GetOrdinal("CHECKER_REMARKS")) ? null : reader.GetString(reader.GetOrdinal("CHECKER_REMARKS"))
                                 };
                             }
                         }
@@ -1285,7 +1287,7 @@ namespace IFCO.WEB.Services
             }
         }
 
-        public async Task UpdateRcmPointAsync(RcmPointsMaster point, string updatedBy)
+        public async Task UpdateRcmPointAsync(RcmPointsMaster point, string updatedBy, string editedByRole, string? checkerRemarks = null)
         {
             try
             {
@@ -1341,6 +1343,9 @@ namespace IFCO.WEB.Services
                         command.Parameters.Add("p_REJECTION_REASON", OracleDbType.NVarchar2, point.RejectionReason, ParameterDirection.Input);
                         command.Parameters.Add("p_ADMIN_REPLY", OracleDbType.NVarchar2, point.AdminReply, ParameterDirection.Input);
                         command.Parameters.Add("p_UPDATED_BY", OracleDbType.NVarchar2, updatedBy, ParameterDirection.Input); // Use the captured user ID
+                        // NEW (Point 2): must stay positioned after p_UPDATED_BY to match the package signature
+                        command.Parameters.Add("p_LAST_EDITED_BY_ROLE", OracleDbType.NVarchar2, editedByRole, ParameterDirection.Input);
+                        command.Parameters.Add("p_CHECKER_REMARKS", OracleDbType.NVarchar2, string.IsNullOrWhiteSpace(checkerRemarks) ? null : checkerRemarks, ParameterDirection.Input);
 
                         await command.ExecuteNonQueryAsync();
                     }

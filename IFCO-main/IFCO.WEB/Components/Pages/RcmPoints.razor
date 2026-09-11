@@ -136,6 +136,14 @@
                 <p class="mb-0">@currentRcmPoint.RejectionReason</p>
             </div>
         }
+        @* NEW (Point 2): explicit marker when a Checker has edited the Maker's original submission *@
+        @if (currentRcmPoint.LastEditedByRole == "Checker" && !string.IsNullOrEmpty(currentRcmPoint.CheckerRemarks))
+        {
+            <div class="alert alert-info" role="alert">
+                <h6 class="alert-heading"><i class="bi bi-pencil-square me-1"></i>Edited by Checker:</h6>
+                <p class="mb-0">@currentRcmPoint.CheckerRemarks</p>
+            </div>
+        }
         <ul class="nav nav-tabs" id="rcmPointTab" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details-tab-pane" type="button" role="tab">Details</button>
@@ -509,6 +517,23 @@
                                 </div>
                             </div>
                         }
+                        @* NEW (Point 2): required explanation whenever a Checker is editing core details *@
+                        @if (currentUserRole == "Checker" && canEditCoreDetails)
+                        {
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="headingChecker">
+                                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseChecker">
+                                        Checker Remarks <span class="text-danger ms-1">*</span>
+                                    </button>
+                                </h2>
+                                <div id="collapseChecker" class="accordion-collapse collapse show" data-bs-parent="#rcmPointAccordion">
+                                    <div class="accordion-body">
+                                        <label class="form-label">Reason for editing this submitted point</label>
+                                        <InputTextArea @bind-Value="checkerRemarksInput" class="form-control" rows="2" placeholder="Explain what you changed and why - required before saving." />
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </EditForm>
                 }
                 else
@@ -591,46 +616,50 @@
             }
         </div>
 
-        @if (isViewMode)
+        @if (isRejecting)
         {
-            @if (isRejecting)
-            {
-                <div class="w-100">
-                    <InputTextArea @bind-Value="rejectionReason" class="form-control mb-2" placeholder="Enter rejection reason..." />
-                    <button type="button" class="btn btn-secondary" @onclick="() => isRejecting = false">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="HandleReject">Confirm Rejection</button>
-                </div>
-            }
-            else
-            {
-                <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
-
-                @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted")
-                {
-                    <button type="button" class="btn btn-danger" @onclick="() => isRejecting = true">
-                        <i class="bi bi-x-circle me-2"></i>Reject
-                    </button>
-                    <button type="button" class="btn btn-success" @onclick="HandleVerify">
-                        <i class="bi bi-check2-circle me-2"></i>Verify
-                    </button>
-                }
-                @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted for Deletion")
-                {
-                    <button type="button" class="btn btn-danger" @onclick="HandlePermanentDelete">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Permanent Deletion
-                    </button>
-                }
-            }
+            <div class="w-100">
+                <InputTextArea @bind-Value="rejectionReason" class="form-control mb-2" placeholder="Enter rejection reason..." />
+                <button type="button" class="btn btn-secondary" @onclick="() => isRejecting = false">Cancel</button>
+                <button type="button" class="btn btn-danger" @onclick="HandleReject">Confirm Rejection</button>
+            </div>
         }
         else if (currentUserLoginType == "Consultant" || (currentUserLoginType == "Vertical" && currentUserRole == "Admin"))
         {
             <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
-            <button type="button" class="btn btn-info" @onclick="HandleSaveChanges">
-                <i class="bi bi-save me-2"></i>Save Changes
-            </button>
-            <button type="button" class="btn btn-primary" @onclick="HandleSubmitChanges">
-                <i class="bi bi-check-circle me-2"></i>Submit Changes
-            </button>
+
+            @if (!isViewMode)
+            {
+                <button type="button" class="btn btn-info" @onclick="HandleSaveChanges">
+                    <i class="bi bi-save me-2"></i>Save Changes
+                </button>
+                @* Submit Changes stays Maker/Admin only - a Checker verifies/rejects instead of "submitting" *@
+                @if (currentUserLoginType != "Consultant" || currentUserRole == "Maker")
+                {
+                    <button type="button" class="btn btn-primary" @onclick="HandleSubmitChanges">
+                        <i class="bi bi-check-circle me-2"></i>Submit Changes
+                    </button>
+                }
+            }
+
+            @* NEW (Point 2): Verify/Reject/Permanent-Delete are now available whether the
+               Checker opened this via View or Edit, so they can review, tweak details if
+               needed, and action it in the same visit. *@
+            @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted")
+            {
+                <button type="button" class="btn btn-danger" @onclick="() => isRejecting = true">
+                    <i class="bi bi-x-circle me-2"></i>Reject
+                </button>
+                <button type="button" class="btn btn-success" @onclick="HandleVerify">
+                    <i class="bi bi-check2-circle me-2"></i>Verify
+                </button>
+            }
+            @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted for Deletion")
+            {
+                <button type="button" class="btn btn-danger" @onclick="HandlePermanentDelete">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Permanent Deletion
+                </button>
+            }
         }
         else if (currentUserLoginType == "Vertical")
         {
@@ -666,6 +695,7 @@
     private bool isRejecting = false;
     private string rejectionReason = "";
     private bool canEditCoreDetails = false;
+    private string checkerRemarksInput = ""; // NEW (Point 2): Checker's required note when editing a submitted point
     // --- Page State ---
     private List<VerticalMaster>? allVerticals;
     private List<RcmMaster>? rcmsForDropdown;
@@ -861,6 +891,7 @@
         isViewMode = viewMode;
         isRejecting = false;
         rejectionReason = "";
+        checkerRemarksInput = "";
         canEditCoreDetails = false; // Default to read-only
 
         if (point == null) // Add mode
@@ -877,17 +908,30 @@
             isAddingNew = false;
             modalTitle = isViewMode ? $"View RCM Point" : $"Edit RCM Point";
 
-            // Makers can edit core details only if status is Saved or Rejected and not in view mode
-            if (currentUserLoginType == "Consultant" && !isViewMode && (point.Status == "Saved" || point.Status == "Rejected"))
+            if (currentUserLoginType == "Consultant" && !isViewMode)
             {
-                canEditCoreDetails = true;
+                // Makers can edit core details only if status is Saved or Rejected
+                if (currentUserRole == "Maker" && (point.Status == "Saved" || point.Status == "Rejected"))
+                {
+                    canEditCoreDetails = true;
+                }
+                // NEW (Point 2): Checkers can now edit core details on points in their review queue
+                else if (currentUserRole == "Checker" && IsCheckerEditableStatus(point.Status))
+                {
+                    canEditCoreDetails = true;
+                }
             }
 
             currentRcmPoint = await DbService.GetRcmPointByIdAsync(point.SqNo);
+            checkerRemarksInput = currentRcmPoint.CheckerRemarks ?? "";
             await LoadAttachments();
         }
         isModalVisible = true;
     }
+
+    // NEW (Point 2): statuses a Checker is allowed to edit - same set they can already view/action
+    private static bool IsCheckerEditableStatus(string? status) =>
+        status == "Submitted" || status == "Submitted for Deletion" || status == "Admin Submitted";
 
     private void CloseModal() 
     { 
@@ -900,6 +944,25 @@
     {
         if (string.IsNullOrEmpty(currentUserId) || pointForm?.EditContext == null || !pointForm.EditContext.Validate())
         {
+            return;
+        }
+
+        // NEW (Point 2): the "read-only" styling on the form is CSS-only (pointer-events),
+        // so this is the real gate against saving when Maker/Checker shouldn't be able to.
+        // Scoped to Consultant logins only - Vertical/Admin's Save Changes flow (which edits
+        // Management/Admin Reply, governed separately) is untouched.
+        if (!isAddingNew && currentUserLoginType == "Consultant" && !canEditCoreDetails)
+        {
+            statusMessage = "You do not have permission to edit this point in its current state.";
+            statusMessageCssClass = "alert alert-danger";
+            return;
+        }
+
+        // NEW (Point 2): Checkers must explain why they're changing a Maker's submission
+        if (!isAddingNew && currentUserRole == "Checker" && canEditCoreDetails && string.IsNullOrWhiteSpace(checkerRemarksInput))
+        {
+            statusMessage = "Checker remarks are required when editing a submitted point.";
+            statusMessageCssClass = "alert alert-danger";
             return;
         }
 
@@ -926,7 +989,11 @@
             }
             else
             {
-                await DbService.UpdateRcmPointAsync(currentRcmPoint, currentUserId);
+                await DbService.UpdateRcmPointAsync(
+                    currentRcmPoint,
+                    currentUserId,
+                    editedByRole: currentUserRole ?? "Unknown",
+                    checkerRemarks: currentUserRole == "Checker" ? checkerRemarksInput : null);
                 statusMessage = "Changes saved successfully!";
                 statusMessageCssClass = "alert alert-success";
                 await LoadRcmPoints(currentPage);
@@ -974,7 +1041,7 @@
             }
             else
             {
-                await DbService.UpdateRcmPointAsync(currentRcmPoint, currentUserId);
+                await DbService.UpdateRcmPointAsync(currentRcmPoint, currentUserId, editedByRole: currentUserRole ?? "Unknown");
                 await DbService.SetRcmPointStatusAsync(currentRcmPoint.SqNo, "Submitted", currentUserId);
 
                 statusMessage = "RCM Point submitted successfully!";
@@ -1365,7 +1432,12 @@
     {
         if (currentUserLoginType == "Consultant")
         {
-            // For consultants (Makers), enable only for these statuses
+            if (currentUserRole == "Checker")
+            {
+                // NEW (Point 2): Checkers can edit any point in their review queue
+                return !IsCheckerEditableStatus(point.Status);
+            }
+            // For Makers, enable only for these statuses
             return !(point.Status == "Saved" || point.Status == "Rejected");
         }
 
