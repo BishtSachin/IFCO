@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 
 @using System.ComponentModel
+@using IFCO.WEB.Helpers
 @using System.Globalization
 @using IFCO.WEB.Models
 @using IFCO.WEB.Services
@@ -556,7 +557,7 @@
                             <div class="col-md-6">
                                 <h5>Upload New File</h5>
                                 <div class="mb-3">
-                                    <InputFile OnChange="HandleFileSelected" class="form-control" disabled="@isUploading" />
+                                    <InputFile OnChange="HandleFileSelected" class="form-control" disabled="@isUploading" accept="@FileUploadValidator.AcceptAttributeValue" />
                                     @if (isUploading)
                                     {
                                         <div class="form-text">Uploading, please wait...</div>
@@ -745,7 +746,7 @@
     // --- File Attachment State ---
     private List<RcmPointFilesMaster>? attachedFiles;
     private bool isUploading = false;
-    private const long MaxFileSize = 5 * 1024 * 1024; // 5 MB
+    // File size/type limits now come from FileUploadValidator (shared across every upload point in the app).
 
     // --- Dictionaries for Dropdown Options ---
     private readonly Dictionary<string, int> impactOptions = new() { { "Insignificant", 1 }, { "Minor", 2 }, { "Moderate", 3 }, { "Severe", 4 } };
@@ -1372,9 +1373,9 @@
         var file = e.File;
         if (file == null) return;
 
-        if (file.Size > MaxFileSize)
+        if (!FileUploadValidator.TryValidate(file.Name, file.Size, out var validationError))
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"File size exceeds the limit of {MaxFileSize / 1024 / 1024} MB.");
+            await JSRuntime.InvokeVoidAsync("alert", validationError);
             return;
         }
 
@@ -1384,7 +1385,7 @@
         try
         {
             using var memoryStream = new MemoryStream();
-            await file.OpenReadStream(MaxFileSize).CopyToAsync(memoryStream);
+            await file.OpenReadStream(FileUploadValidator.MaxFileSizeBytes).CopyToAsync(memoryStream);
 
             var newFile = new RcmPointFilesMaster
             {

@@ -58,7 +58,12 @@ try
         .AddInteractiveServerComponents()
         .AddHubOptions(options =>
         {
-            options.MaximumReceiveMessageSize = 1024 * 1024;
+            // Must stay >= FileUploadValidator.MaxFileSizeBytes - this is the
+            // transport-level cap for the Blazor Server circuit, separate from
+            // the app-level file size check. If this is smaller than the
+            // app's max, a file that passes validation can still fail to
+            // upload at the SignalR layer.
+            options.MaximumReceiveMessageSize = 50 * 1024 * 1024; // 50 MB
         });
 
     // We keep the services needed for our other pages.

@@ -3,6 +3,7 @@
 @using IFCO.WEB.Services
 @using System.IO
 @using System.Security.Claims
+@using IFCO.WEB.Helpers
 @inject OracleService DbService
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
@@ -54,7 +55,7 @@
 
                         <div class="col-md-5">
                             <label class="form-label">Select File (PDF, Excel, Doc, PPT, Img)</label>
-                            <InputFile OnChange="OnInputFileChange" class="form-control" accept=".jpg,.png,.pdf,.xlsx,.docx,.pptx" />
+                            <InputFile OnChange="OnInputFileChange" class="form-control" accept="@FileUploadValidator.AcceptAttributeValue" />
                             <small class="text-muted">Max 5MB. Allowed: JPG, PNG, PDF, XLSX, DOCX, PPTX.</small>
                         </div>
 
@@ -135,7 +136,7 @@
     // Upload Model
     private UploadViewModel uploadModel = new();
     private IBrowserFile? selectedFile;
-    private const long MaxFileSize = 1024 * 1024 * 10; // 10 MB
+    // File size/type limits now come from FileUploadValidator (shared across every upload point in the app).
 
     // Helper Class for Form
     public class UploadViewModel
@@ -211,12 +212,10 @@
             await JSRuntime.InvokeVoidAsync("alert", "Please select a file."); return;
         }
 
-        // Requirement 4: Extension Validation
-        var allowedExtensions = new[] { ".jpg", ".png", ".pdf", ".xlsx", ".docx", ".pptx" };
-        var extension = Path.GetExtension(selectedFile.Name).ToLower();
-        if (!allowedExtensions.Contains(extension))
+        // Extension + size validation (shared across every upload point in the app)
+        if (!FileUploadValidator.TryValidate(selectedFile.Name, selectedFile.Size, out var validationError))
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Invalid file type. Allowed: JPG, PNG, PDF, Excel, Docx, PPTX.");
+            await JSRuntime.InvokeVoidAsync("alert", validationError);
             return;
         }
 
@@ -225,7 +224,7 @@
             isUploading = true;
 
             // Convert file to byte array
-            using var stream = selectedFile.OpenReadStream(MaxFileSize);
+            using var stream = selectedFile.OpenReadStream(FileUploadValidator.MaxFileSizeBytes);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             byte[] fileData = ms.ToArray();
