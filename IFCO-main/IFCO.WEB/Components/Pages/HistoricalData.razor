@@ -90,7 +90,7 @@ else
                             <span class="badge bg-success">Verified</span>
                         }
                     </td>
-                    <td>Q@p.Quarter</td>
+                    <td>Q@(p.Quarter)</td>
                     <td>@p.ArchivedDate?.ToString("dd-MMM-yyyy")</td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewPoint(p)">
@@ -120,7 +120,7 @@ else
                 <dt class="col-sm-3">Management Reply</dt><dd class="col-sm-9">@selectedPoint.ManagementReply</dd>
                 <dt class="col-sm-3">Admin Reply</dt><dd class="col-sm-9">@selectedPoint.AdminReply</dd>
                 <dt class="col-sm-3">Status at Close</dt><dd class="col-sm-9">@selectedPoint.StatusAtClose</dd>
-                <dt class="col-sm-3">Financial Year / Quarter</dt><dd class="col-sm-9">@selectedPoint.FinancialYear, Q@selectedPoint.Quarter</dd>
+                <dt class="col-sm-3">Financial Year / Quarter</dt><dd class="col-sm-9">@selectedPoint.FinancialYear, Q@(selectedPoint.Quarter)</dd>
                 <dt class="col-sm-3">Archived By / Date</dt><dd class="col-sm-9">@selectedPoint.ArchivedBy on @selectedPoint.ArchivedDate?.ToString("dd-MMM-yyyy HH:mm")</dd>
             </dl>
 

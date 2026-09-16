@@ -118,8 +118,8 @@ else
             @foreach (var log in closureHistory)
             {
                 <tr>
-                    <td>FY @log.FinancialYear, Q@log.Quarter @(log.IsFinancialYearEnd ? " (FY End)" : "")</td>
-                    <td>FY @log.NextFinancialYear, Q@log.NextQuarter</td>
+                    <td>FY @log.FinancialYear, Q@(log.Quarter) @(log.IsFinancialYearEnd ? " (FY End)" : "")</td>
+                    <td>FY @log.NextFinancialYear, Q@(log.NextQuarter)</td>
                     <td>@log.PointsArchivedCount</td>
                     <td>@log.PointsCarriedForwardCount</td>
                     <td>@log.CertificateFileName</td>
