@@ -61,7 +61,7 @@
             top: 15%;
             height: 70%;
             width: 5px; /* Make the bar slightly thicker */
-            background-color: #0d6efd; /* A bright, modern blue */
+            background-color: var(--ub-red, #DA251C); /* A bright, modern blue */
             border-radius: 0 4px 4px 0;
         }
 

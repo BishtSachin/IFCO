@@ -124,7 +124,7 @@ main {
         }
 
 .user-info a {
-    color: #dc3545; /* Make logout link red for distinction */
+    color: var(--ub-red, #DA251C); /* Make logout link red for distinction */
     font-weight: 500;
 }
 

@@ -1,10 +1,158 @@
 ﻿@page "/home"
+@using System.Security.Claims
+@using IFCO.WEB.Services
+@inject OracleService DbService
 @attribute [Authorize]
+@rendermode InteractiveServer
 
 <PageTitle>Home</PageTitle>
 
-<div class="welcome-container">
-    <div class="welcome-content">
-        <h1 class="welcome-title">Welcome to Internal Financial Control Over Financial Reporting (IFCO-FR) Web Application.</h1>
-    </div>
-</div>
+<AuthorizeView>
+    <Authorized>
+        @{
+            var isVertical = context.User.FindFirstValue("LoginType") == "Vertical";
+            var isAdmin = context.User.IsInRole("Admin");
+            var isConsultant = context.User.FindFirstValue("LoginType") == "Consultant";
+            var isVerticalAdmin = isVertical && isAdmin;
+            var isChecker = context.User.IsInRole("Checker");
+            var displayName = context.User.FindFirstValue("DisplayName");
+        }
+
+        <div class="mb-4">
+            <h2 class="mb-1">Welcome, @displayName</h2>
+            <p class="text-muted mb-0">Internal Financial Control Over Financial Reporting (IFCO-FR)</p>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase fw-bold mb-2">Active Period</div>
+                        @if (currentPeriod == null)
+                        {
+                            <p class="text-muted small mb-0">Unable to load current period.</p>
+                        }
+                        else
+                        {
+                            <div class="fs-4 fw-bold">FY @currentPeriod.Value.FinancialYear</div>
+                            <div class="text-muted">Quarter @currentPeriod.Value.Quarter</div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <div class="text-muted small text-uppercase fw-bold mb-2">Your Role</div>
+                        <div class="fs-5">
+                            @if (isVerticalAdmin) { <span>Admin</span> }
+                            else if (isConsultant && isChecker) { <span>Checker</span> }
+                            else if (isConsultant) { <span>Maker</span> }
+                            else if (isVertical) { <span>Vertical</span> }
+                        </div>
+                        <p class="text-muted small mb-0 mt-1">
+                            @if (isVerticalAdmin)
+                            {
+                                <span>You can manage masters, close quarters, and view every RCM.</span>
+                            }
+                            else if (isConsultant && isChecker)
+                            {
+                                <span>Review and action RCM Points submitted for your assigned RCMs.</span>
+                            }
+                            else if (isConsultant)
+                            {
+                                <span>Enter and submit RCM Points for your assigned RCMs.</span>
+                            }
+                            else if (isVertical)
+                            {
+                                <span>Reply to verified RCM Points for your vertical.</span>
+                            }
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h5 class="mb-3">Quick Links</h5>
+        <div class="row g-3">
+            @if (isVerticalAdmin || isConsultant || isVertical)
+            {
+                <div class="col-md-3 col-sm-6">
+                    <a href="rcm-points" class="text-decoration-none">
+                        <div class="card h-100 quick-link-card">
+                            <div class="card-body text-center">
+                                <i class="bi bi-list-check fs-2 text-primary"></i>
+                                <div class="fw-bold mt-2">RCM Points</div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+            @if (isVerticalAdmin || isConsultant || isVertical)
+            {
+                <div class="col-md-3 col-sm-6">
+                    <a href="historical-data" class="text-decoration-none">
+                        <div class="card h-100 quick-link-card">
+                            <div class="card-body text-center">
+                                <i class="bi bi-archive fs-2 text-primary"></i>
+                                <div class="fw-bold mt-2">Historical Data</div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+            @if (isVerticalAdmin || isConsultant)
+            {
+                <div class="col-md-3 col-sm-6">
+                    <a href="consolidated-reports" class="text-decoration-none">
+                        <div class="card h-100 quick-link-card">
+                            <div class="card-body text-center">
+                                <i class="bi bi-file-earmark-arrow-up fs-2 text-primary"></i>
+                                <div class="fw-bold mt-2">Quarterly Reports</div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+            @if (isVerticalAdmin)
+            {
+                <div class="col-md-3 col-sm-6">
+                    <a href="close-quarter" class="text-decoration-none">
+                        <div class="card h-100 quick-link-card">
+                            <div class="card-body text-center">
+                                <i class="bi bi-calendar-check fs-2 text-primary"></i>
+                                <div class="fw-bold mt-2">Close Quarter</div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+            <div class="col-md-3 col-sm-6">
+                <a href="report-generation" class="text-decoration-none">
+                    <div class="card h-100 quick-link-card">
+                        <div class="card-body text-center">
+                            <i class="bi bi-bar-chart fs-2 text-primary"></i>
+                            <div class="fw-bold mt-2">Report Generation</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private (string FinancialYear, int Quarter)? currentPeriod;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            currentPeriod = await DbService.GetCurrentPeriodAsync();
+        }
+        catch
+        {
+            currentPeriod = null;
+        }
+    }
+}

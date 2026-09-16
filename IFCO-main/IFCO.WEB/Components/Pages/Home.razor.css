@@ -1,51 +1,10 @@
-﻿.welcome-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    min-height: 60vh; /* Ensures the message is centered vertically in the content area */
+﻿.quick-link-card {
+    transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    cursor: pointer;
 }
 
-.welcome-content {
-    max-width: 800px;
-}
-
-.welcome-title {
-    font-size: 2.8rem;
-    font-weight: 600;
-    color: #2c3e50; /* A modern, dark slate-blue color */
-    margin-bottom: 1rem;
-    animation: fadeInDown 0.8s ease-in-out; /* Add a smooth entrance animation */
-}
-
-.welcome-subtitle {
-    font-size: 1.2rem;
-    color: #868e96; /* A softer, secondary grey color */
-    animation: fadeInUp 0.8s ease-in-out 0.2s; /* Stagger the animation for the subtitle */
-    animation-fill-mode: both;
-}
-
-/* Defines the keyframe animations for the entrance effect */
-@keyframes fadeInDown {
-    from {
-        opacity: 0;
-        transform: translateY(-20px);
+    .quick-link-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 16px rgba(20, 24, 30, 0.12);
+        border-color: var(--ub-red, #DA251C);
     }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}

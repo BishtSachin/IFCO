@@ -1,0 +1,209 @@
+﻿/* ==========================================================================
+   IFCO Theme — Union Bank of India brand palette
+   ==========================================================================
+   This file is CSS-only and purely additive. It overrides colors,
+   typography, and spacing on top of Bootstrap 5.1's default styling.
+   It does not change any markup, component logic, or interaction
+   behavior anywhere in the app - safe to add or remove without
+   affecting how anything works.
+
+   Brand colors sourced from Union Bank of India's actual logo:
+   red #DA251C, blue #00579C.
+   ========================================================================== */
+
+:root {
+    /* Brand */
+    --ub-red: #DA251C;
+    --ub-red-dark: #B01E17;
+    --ub-red-light: #FCEAE9;
+    --ub-blue: #00579C;
+    --ub-blue-dark: #003D6E;
+    --ub-blue-light: #E6F0F7;
+
+    /* Neutrals */
+    --ub-text: #26282B;
+    --ub-text-muted: #6B7178;
+    --ub-border: #E2E5E9;
+    --ub-surface: #FFFFFF;
+    --ub-surface-tint: #F7F8FA;
+
+    /* Semantic (kept close to Bootstrap's own so existing
+       .btn-success / .btn-danger / .alert-* usage stays meaningful) */
+    --ub-success: #1E8E5A;
+    --ub-warning: #C77700;
+    --ub-danger: #C0271A;
+    --ub-info: var(--ub-blue);
+
+    /* Spacing / shape */
+    --ub-radius: 8px;
+    --ub-radius-sm: 6px;
+    --ub-shadow-sm: 0 1px 3px rgba(20, 24, 30, 0.06);
+    --ub-shadow: 0 2px 12px rgba(20, 24, 30, 0.08);
+}
+
+/* -------------------------------------------------------------------------
+   Typography
+   ------------------------------------------------------------------------- */
+html, body {
+    color: var(--ub-text);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ub-text);
+}
+
+.text-muted {
+    color: var(--ub-text-muted) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Links & focus ring
+   ------------------------------------------------------------------------- */
+a, .btn-link {
+    color: var(--ub-blue);
+}
+
+    a:hover, .btn-link:hover {
+        color: var(--ub-blue-dark);
+    }
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus,
+.form-control:focus, .form-select:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 0.15rem rgba(0, 87, 156, 0.25) !important;
+    border-color: var(--ub-blue) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Buttons — primary action is brand red, matching the "Union Bank" wordmark
+   ------------------------------------------------------------------------- */
+.btn {
+    border-radius: var(--ub-radius-sm);
+    font-weight: 500;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: var(--ub-red);
+    border-color: var(--ub-red);
+}
+
+    .btn-primary:hover, .btn-primary:active, .btn-primary:focus {
+        background-color: var(--ub-red-dark) !important;
+        border-color: var(--ub-red-dark) !important;
+    }
+
+.btn-outline-primary {
+    color: var(--ub-red);
+    border-color: var(--ub-red);
+}
+
+    .btn-outline-primary:hover {
+        background-color: var(--ub-red);
+        border-color: var(--ub-red);
+    }
+
+.btn-info {
+    color: #fff;
+    background-color: var(--ub-blue);
+    border-color: var(--ub-blue);
+}
+
+    .btn-info:hover, .btn-info:active, .btn-info:focus {
+        background-color: var(--ub-blue-dark) !important;
+        border-color: var(--ub-blue-dark) !important;
+    }
+
+.btn-success {
+    background-color: var(--ub-success);
+    border-color: var(--ub-success);
+}
+
+.btn-danger {
+    background-color: var(--ub-danger);
+    border-color: var(--ub-danger);
+}
+
+/* -------------------------------------------------------------------------
+   Badges
+   ------------------------------------------------------------------------- */
+.badge.bg-primary {
+    background-color: var(--ub-red) !important;
+}
+
+.badge.bg-success {
+    background-color: var(--ub-success) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--ub-warning) !important;
+}
+
+.badge.bg-danger {
+    background-color: var(--ub-danger) !important;
+}
+
+/* -------------------------------------------------------------------------
+   Cards, accordions, tables — subtle, consistent surface treatment
+   ------------------------------------------------------------------------- */
+.card {
+    border: 1px solid var(--ub-border);
+    border-radius: var(--ub-radius);
+    box-shadow: var(--ub-shadow-sm);
+}
+
+.card-header {
+    background-color: var(--ub-surface-tint);
+    border-bottom: 1px solid var(--ub-border);
+    font-weight: 600;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--ub-blue-light);
+    color: var(--ub-blue-dark);
+}
+
+.accordion-button:focus {
+    box-shadow: 0 0 0 0.15rem rgba(0, 87, 156, 0.25);
+}
+
+.table thead th {
+    background-color: var(--ub-surface-tint);
+    color: var(--ub-text-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    border-bottom-width: 1px;
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--ub-blue-light);
+}
+
+/* -------------------------------------------------------------------------
+   Pagination
+   ------------------------------------------------------------------------- */
+.page-link {
+    color: var(--ub-blue);
+}
+
+.page-item.active .page-link {
+    background-color: var(--ub-red);
+    border-color: var(--ub-red);
+}
+
+.page-link:hover {
+    color: var(--ub-blue-dark);
+}
+
+/* -------------------------------------------------------------------------
+   Content card (article.content in MainLayout) — sit it on a clean surface
+   ------------------------------------------------------------------------- */
+article.content {
+    background-color: rgba(255, 255, 255, 0.94);
+    border-radius: 12px;
+}
