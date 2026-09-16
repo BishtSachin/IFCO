@@ -27,5 +27,19 @@ namespace IFCO.WEB.Controllers
             }
             return File(file.FileData, file.FileType ?? "application/octet-stream", file.FileName);
         }
+
+        // NEW (Point 4): download a file that was carried into RCM_POINT_FILES_ARCHIVE
+        // when its point was archived at quarter close.
+        [HttpGet("download-archived/{archiveFileSqNo}")]
+        public async Task<IActionResult> DownloadArchivedFile(int archiveFileSqNo)
+        {
+            var file = await _dbService.GetArchivedFileByIdAsync(archiveFileSqNo);
+
+            if (file == null || file.FileData == null)
+            {
+                return NotFound();
+            }
+            return File(file.FileData, file.FileType ?? "application/octet-stream", file.FileName);
+        }
     }
 }

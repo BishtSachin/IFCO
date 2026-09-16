@@ -69,6 +69,21 @@ namespace IFCO.WEB.Models
         public string? LastEditedByRole { get; set; }
         public string? CheckerRemarks { get; set; }
 
+        // NEW (Point 4 - Quarter/FY segregation & archival)
+        public string? FinancialYear { get; set; }
+        public int? Quarter { get; set; }
+        public int? CarriedForwardFromSqNo { get; set; }
+
+        // Archive-only fields - populated when this object represents a row
+        // from RCM_POINTS_ARCHIVE (via the Historical Data screens) rather
+        // than the live RCM_POINTS_MASTER. Null for live rows.
+        public int? ArchiveSqNo { get; set; }
+        public int? OriginalSqNo { get; set; }
+        public string? StatusAtClose { get; set; }
+        public string? ClosureType { get; set; } // "Verified" or "ForceClosed"
+        public string? ArchivedBy { get; set; }
+        public DateTime? ArchivedDate { get; set; }
+
         // Joined fields for display
         public string? RcmName { get; set; }
         public string? VerticalName { get; set; }

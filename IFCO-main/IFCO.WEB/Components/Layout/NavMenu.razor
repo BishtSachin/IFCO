@@ -67,6 +67,26 @@
                         </NavLink>
                     </div>
                 }
+
+                @* NEW (Point 4): Close Quarter - Admin only, irreversible action *@
+                @if (isVerticalAdmin)
+                {
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="close-quarter">
+                            <span class="bi bi-calendar-check" aria-hidden="true"></span> <span class="nav-text">Close Quarter</span>
+                        </NavLink>
+                    </div>
+                }
+
+                @* NEW (Point 4): Historical Data - same audience as RCM Points/Report Generation *@
+                @if (isVerticalAdmin || isConsultant || isVertical)
+                {
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="historical-data">
+                            <span class="bi bi-archive" aria-hidden="true"></span> <span class="nav-text">Historical Data</span>
+                        </NavLink>
+                    </div>
+                }
             </Authorized>
         </AuthorizeView>
     </nav>

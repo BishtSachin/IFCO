@@ -1,0 +1,216 @@
+﻿@page "/close-quarter"
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using IFCO.WEB.Helpers
+@using Microsoft.AspNetCore.Components.Forms
+@inject OracleService DbService
+@inject IJSRuntime JSRuntime
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+
+<h3>Close Quarter</h3>
+<p class="text-muted">Archives Verified/closed points and rolls the rest forward into the next period. This cannot be undone.</p>
+
+@if (isLoading)
+{
+    <p><em>Loading...</em></p>
+}
+else if (summary != null)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">
+                Closing: FY @summary.CurrentFinancialYear, Quarter @summary.CurrentQuarter
+                @if (summary.IsFinancialYearEnd)
+                {
+                    <span class="badge bg-warning text-dark ms-2">Financial Year End</span>
+                }
+            </h5>
+            <p class="text-muted mb-3">Next period will become: FY @summary.NextFinancialYear, Quarter @summary.NextQuarter</p>
+
+            <table class="table table-sm table-bordered w-auto">
+                <tbody>
+                    <tr>
+                        <td>Verified points -> archived (with files)</td>
+                        <td class="text-end fw-bold">@summary.VerifiedCount</td>
+                    </tr>
+                    <tr>
+                        <td>Management/Admin Submitted -> archived, marked force-closed</td>
+                        <td class="text-end fw-bold">@summary.ForceClosedCount</td>
+                    </tr>
+                    <tr>
+                        <td>Saved/Rejected/Submitted/Submitted for Deletion -> carried forward to next quarter</td>
+                        <td class="text-end fw-bold">@summary.CarryForwardCount</td>
+                    </tr>
+                    @if (summary.IsFinancialYearEnd)
+                    {
+                        <tr>
+                            <td>Additional: every point archived this FY -> rejoins fresh cycle next year</td>
+                            <td class="text-end fw-bold">@summary.FyEndAdditionalCarryForward</td>
+                        </tr>
+                    }
+                    <tr class="table-light">
+                        <td class="fw-bold">Total archived / total carried forward</td>
+                        <td class="text-end fw-bold">@summary.TotalArchivedCount / @summary.TotalCarryForwardCount</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            @if (summary.VerifiedCount == 0 && summary.ForceClosedCount == 0 && summary.CarryForwardCount == 0)
+            {
+                <div class="alert alert-secondary">There are no points in the current period to process. You can still close if that's expected.</div>
+            }
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Certificate / Closing Document <span class="text-danger">*</span></h5>
+            <p class="text-muted">Required before this quarter can be closed. Filed the same way as Quarterly Report Submission (FY @summary.CurrentFinancialYear, Quarter @summary.CurrentQuarter).</p>
+            <InputFile OnChange="OnCertificateSelected" class="form-control" accept="@FileUploadValidator.AcceptAttributeValue" disabled="@isClosing" />
+            @if (certificateFile != null)
+            {
+                <div class="form-text text-success"><i class="bi bi-check-circle me-1"></i>@certificateFile.Name selected</div>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="@statusMessageCssClass">@statusMessage</div>
+    }
+
+    <button class="btn btn-danger" @onclick="HandleCloseQuarter" disabled="@(isClosing || certificateFile == null)">
+        @if (isClosing)
+        {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+        }
+        Close Quarter
+    </button>
+}
+
+<hr class="my-4" />
+
+<h4>Closure History</h4>
+@if (closureHistory == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (!closureHistory.Any())
+{
+    <p class="text-muted">No quarters have been closed yet.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Period Closed</th>
+                <th>Became</th>
+                <th>Archived</th>
+                <th>Carried Forward</th>
+                <th>Certificate</th>
+                <th>Closed By</th>
+                <th>Closed Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in closureHistory)
+            {
+                <tr>
+                    <td>FY @log.FinancialYear, Q@log.Quarter @(log.IsFinancialYearEnd ? " (FY End)" : "")</td>
+                    <td>FY @log.NextFinancialYear, Q@log.NextQuarter</td>
+                    <td>@log.PointsArchivedCount</td>
+                    <td>@log.PointsCarriedForwardCount</td>
+                    <td>@log.CertificateFileName</td>
+                    <td>@log.ClosedBy</td>
+                    <td>@log.ClosedDate.ToString("dd-MMM-yyyy HH:mm")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isClosing = false;
+    private QuarterCloseSummary? summary;
+    private List<QuarterCloseLogEntry>? closureHistory;
+    private IBrowserFile? certificateFile;
+    private string? statusMessage;
+    private string statusMessageCssClass = "alert alert-info";
+    private string? currentUserId;
+
+    [CascadingParameter]
+    private Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        currentUserId = authState.User.Identity?.Name ?? "Unknown";
+
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        summary = await DbService.PreviewCloseQuarterAsync();
+        closureHistory = await DbService.GetClosureHistoryAsync();
+        isLoading = false;
+    }
+
+    private void OnCertificateSelected(InputFileChangeEventArgs e)
+    {
+        certificateFile = e.File;
+    }
+
+    private async Task HandleCloseQuarter()
+    {
+        if (certificateFile == null || summary == null || string.IsNullOrEmpty(currentUserId)) return;
+
+        if (!FileUploadValidator.TryValidate(certificateFile.Name, certificateFile.Size, out var validationError))
+        {
+            statusMessage = validationError;
+            statusMessageCssClass = "alert alert-danger";
+            return;
+        }
+
+        var confirmMessage = $"You are about to close FY {summary.CurrentFinancialYear}, Quarter {summary.CurrentQuarter}. " +
+                              $"{summary.TotalArchivedCount} point(s) will be archived and {summary.TotalCarryForwardCount} carried forward. " +
+                              "This cannot be undone. Continue?";
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", confirmMessage);
+        if (!confirmed) return;
+
+        isClosing = true;
+        statusMessage = "Closing quarter, please wait...";
+        statusMessageCssClass = "alert alert-info";
+        StateHasChanged();
+
+        try
+        {
+            using var stream = certificateFile.OpenReadStream(FileUploadValidator.MaxFileSizeBytes);
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+
+            var result = await DbService.CloseQuarterAsync(certificateFile.Name, memoryStream.ToArray(), currentUserId);
+
+            statusMessage = $"Quarter closed successfully. {result.PointsArchived} point(s) archived, {result.PointsCarriedForward} carried forward. " +
+                             $"Active period is now FY {result.NewFinancialYear}, Quarter {result.NewQuarter}.";
+            statusMessageCssClass = "alert alert-success";
+            certificateFile = null;
+
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error closing quarter: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+        finally
+        {
+            isClosing = false;
+            StateHasChanged();
+        }
+    }
+}

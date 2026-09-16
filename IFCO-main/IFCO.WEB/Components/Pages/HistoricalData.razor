@@ -1,0 +1,265 @@
+﻿@page "/historical-data"
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using static IFCO.WEB.Components.Shared.Modal
+@inject OracleService DbService
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+<h3>Historical Data</h3>
+<p class="text-muted">Read-only view of archived RCM Points for past financial years and quarters - for reference, reporting, audit, and compliance.</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <label class="form-label fw-bold">Financial Year</label>
+        <select class="form-select" @bind="selectedFinancialYear" @bind:after="OnFiltersChanged">
+            @foreach (var fy in financialYears)
+            {
+                <option value="@fy">@fy</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label fw-bold">Quarter</label>
+        <select class="form-select" @bind="selectedQuarter" @bind:after="OnFiltersChanged">
+            <option value="0">All Quarters</option>
+            <option value="1">Q1</option>
+            <option value="2">Q2</option>
+            <option value="3">Q3</option>
+            <option value="4">Q4</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label fw-bold">RCM</label>
+        <SearchableSelect TItem="RcmDropdownItem"
+                          TValue="int"
+                          Items="rcmList"
+                          ValueSelector="@(r => int.TryParse(r.RcmSqNo, out var v) ? v : 0)"
+                          TextSelector="@(r => r.RcmName)"
+                          SelectedValue="selectedRcmSqNo"
+                          SelectedValueChanged="OnRcmChanged"
+                          Placeholder="-- All RCMs --" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label fw-bold">Search</label>
+        <input type="text" class="form-control" placeholder="Search by Process or Risk..." value="@searchTerm" @oninput="OnSearchInput" />
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <p><em>Loading...</em></p>
+}
+else if (points == null || !points.Any())
+{
+    <div class="text-center text-muted py-5">
+        <i class="bi bi-archive fs-1"></i>
+        <p class="mt-2">No archived points found for this selection.</p>
+    </div>
+}
+else
+{
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>RCM</th>
+                <th>Process</th>
+                <th>Risk Description</th>
+                <th>Status at Close</th>
+                <th>Closure Type</th>
+                <th>Quarter</th>
+                <th>Archived Date</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in points)
+            {
+                <tr>
+                    <td>@p.RcmName</td>
+                    <td>@p.Process</td>
+                    <td>@p.RiskDescription</td>
+                    <td>@p.StatusAtClose</td>
+                    <td>
+                        @if (p.ClosureType == "ForceClosed")
+                        {
+                            <span class="badge bg-warning text-dark">Force Closed</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Verified</span>
+                        }
+                    </td>
+                    <td>Q@p.Quarter</td>
+                    <td>@p.ArchivedDate?.ToString("dd-MMM-yyyy")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewPoint(p)">
+                            <i class="bi bi-eye"></i> View
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <Pagination CurrentPage="currentPage" TotalPages="totalPages" OnPageChanged="OnPageChanged" />
+}
+
+@if (selectedPoint != null)
+{
+    <Modal Title="@($"Archived Point - {selectedPoint.Process}")" @bind-IsOpen="isModalVisible" Size="ModalSize.Large">
+        <Body>
+            <dl class="row">
+                <dt class="col-sm-3">RCM</dt><dd class="col-sm-9">@selectedPoint.RcmName</dd>
+                <dt class="col-sm-3">Vertical</dt><dd class="col-sm-9">@selectedPoint.VerticalName</dd>
+                <dt class="col-sm-3">Process</dt><dd class="col-sm-9">@selectedPoint.Process</dd>
+                <dt class="col-sm-3">Sub Process</dt><dd class="col-sm-9">@selectedPoint.SubProcess</dd>
+                <dt class="col-sm-3">Risk Description</dt><dd class="col-sm-9">@selectedPoint.RiskDescription</dd>
+                <dt class="col-sm-3">Risk Rating</dt><dd class="col-sm-9">@selectedPoint.RiskRatingHJ</dd>
+                <dt class="col-sm-3">Control Strength</dt><dd class="col-sm-9">@selectedPoint.ControlStrength</dd>
+                <dt class="col-sm-3">Management Reply</dt><dd class="col-sm-9">@selectedPoint.ManagementReply</dd>
+                <dt class="col-sm-3">Admin Reply</dt><dd class="col-sm-9">@selectedPoint.AdminReply</dd>
+                <dt class="col-sm-3">Status at Close</dt><dd class="col-sm-9">@selectedPoint.StatusAtClose</dd>
+                <dt class="col-sm-3">Financial Year / Quarter</dt><dd class="col-sm-9">@selectedPoint.FinancialYear, Q@selectedPoint.Quarter</dd>
+                <dt class="col-sm-3">Archived By / Date</dt><dd class="col-sm-9">@selectedPoint.ArchivedBy on @selectedPoint.ArchivedDate?.ToString("dd-MMM-yyyy HH:mm")</dd>
+            </dl>
+
+            <h6 class="mt-3">Attached Files</h6>
+            @if (selectedPointFiles == null || !selectedPointFiles.Any())
+            {
+                <p class="text-muted small">No files were attached to this point when it was archived.</p>
+            }
+            else
+            {
+                <ul class="list-group">
+                    @foreach (var f in selectedPointFiles)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            @f.FileName
+                            <a href="@($"api/file/download-archived/{f.FileSqNo}")" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-download"></i>
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+        </Body>
+        <Footer>
+            <button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<string> financialYears = new();
+    private string selectedFinancialYear = "";
+    private int selectedQuarter = 0;
+    private int selectedRcmSqNo = 0;
+    private string searchTerm = "";
+
+    private List<RcmDropdownItem>? rcmList;
+    private List<RcmPointsMaster>? points;
+    private int currentPage = 1;
+    private int totalPages = 1;
+    private const int PageSize = 10;
+    private bool isLoading = true;
+
+    private bool isModalVisible = false;
+    private RcmPointsMaster? selectedPoint;
+    private List<RcmPointFilesMaster>? selectedPointFiles;
+
+    private CancellationTokenSource? searchDebounceCts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Same "last 2 years + current + next" generation already used by
+        // Quarterly Report Submission, for consistency.
+        int currentYear = DateTime.Now.Year;
+        for (int i = -2; i <= 1; i++)
+        {
+            financialYears.Add($"{currentYear + i}-{currentYear + i + 1}");
+        }
+        selectedFinancialYear = financialYears.Count > 2 ? financialYears[2] : financialYears.LastOrDefault() ?? "";
+
+        rcmList = await DbService.GetActiveRcmsAsyncForReport();
+
+        await LoadPoints();
+    }
+
+    private async Task OnFiltersChanged()
+    {
+        currentPage = 1;
+        await LoadPoints();
+    }
+
+    private async Task OnRcmChanged(int value)
+    {
+        selectedRcmSqNo = value;
+        currentPage = 1;
+        await LoadPoints();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        searchTerm = e.Value?.ToString() ?? "";
+
+        searchDebounceCts?.Cancel();
+        searchDebounceCts = new CancellationTokenSource();
+        var token = searchDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(400, token);
+            if (!token.IsCancellationRequested)
+            {
+                currentPage = 1;
+                await LoadPoints();
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task OnPageChanged(int newPage)
+    {
+        currentPage = newPage;
+        await LoadPoints();
+    }
+
+    private async Task LoadPoints()
+    {
+        if (string.IsNullOrEmpty(selectedFinancialYear)) return;
+
+        isLoading = true;
+        StateHasChanged();
+
+        var result = await DbService.SearchArchivedRcmPointsAsync(
+            selectedFinancialYear,
+            selectedQuarter == 0 ? null : selectedQuarter,
+            selectedRcmSqNo == 0 ? null : selectedRcmSqNo,
+            searchTerm,
+            currentPage,
+            PageSize);
+
+        points = result.Points;
+        totalPages = (int)Math.Ceiling(result.TotalRecords / (double)PageSize);
+        if (totalPages < 1) totalPages = 1;
+
+        isLoading = false;
+    }
+
+    private async Task ViewPoint(RcmPointsMaster point)
+    {
+        if (point.ArchiveSqNo == null) return;
+
+        selectedPoint = await DbService.GetArchivedPointByIdAsync(point.ArchiveSqNo.Value);
+        selectedPointFiles = await DbService.GetFilesForArchivedPointAsync(point.ArchiveSqNo.Value);
+        isModalVisible = true;
+    }
+
+    private void CloseModal()
+    {
+        isModalVisible = false;
+        selectedPoint = null;
+        selectedPointFiles = null;
+    }
+}

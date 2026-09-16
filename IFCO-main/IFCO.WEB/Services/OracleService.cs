@@ -1934,5 +1934,301 @@ namespace IFCO.WEB.Services
             }
         }
         #endregion
+
+        #region Quarter & Financial Year Close (Point 4)
+
+        public async Task<(string FinancialYear, int Quarter)> GetCurrentPeriodAsync()
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.get_current_period", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    var fyParam = command.Parameters.Add("p_FINANCIAL_YEAR", OracleDbType.Varchar2, 9, null, ParameterDirection.Output);
+                    var qParam = command.Parameters.Add("p_QUARTER", OracleDbType.Int32, ParameterDirection.Output);
+
+                    await command.ExecuteNonQueryAsync();
+
+                    string fy = fyParam.Value?.ToString() ?? "";
+                    int quarter = qParam.Value != null && qParam.Value != DBNull.Value ? Convert.ToInt32(qParam.Value.ToString()) : 0;
+                    return (fy, quarter);
+                }
+            }
+        }
+
+        public async Task<QuarterCloseSummary> PreviewCloseQuarterAsync()
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.preview_close_quarter", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    var currentFy = command.Parameters.Add("p_CURRENT_FINANCIAL_YEAR", OracleDbType.Varchar2, 9, null, ParameterDirection.Output);
+                    var currentQ = command.Parameters.Add("p_CURRENT_QUARTER", OracleDbType.Int32, ParameterDirection.Output);
+                    var nextFy = command.Parameters.Add("p_NEXT_FINANCIAL_YEAR", OracleDbType.Varchar2, 9, null, ParameterDirection.Output);
+                    var nextQ = command.Parameters.Add("p_NEXT_QUARTER", OracleDbType.Int32, ParameterDirection.Output);
+                    var isFyEnd = command.Parameters.Add("p_IS_FINANCIAL_YEAR_END", OracleDbType.Varchar2, 3, null, ParameterDirection.Output);
+                    var verifiedCount = command.Parameters.Add("p_VERIFIED_COUNT", OracleDbType.Int32, ParameterDirection.Output);
+                    var forceClosedCount = command.Parameters.Add("p_FORCE_CLOSED_COUNT", OracleDbType.Int32, ParameterDirection.Output);
+                    var carryForwardCount = command.Parameters.Add("p_CARRY_FORWARD_COUNT", OracleDbType.Int32, ParameterDirection.Output);
+                    var fyEndExtra = command.Parameters.Add("p_FY_END_ADDITIONAL_CARRY_FORWARD", OracleDbType.Int32, ParameterDirection.Output);
+                    var certUploaded = command.Parameters.Add("p_CERTIFICATE_ALREADY_UPLOADED", OracleDbType.Varchar2, 3, null, ParameterDirection.Output);
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return new QuarterCloseSummary
+                    {
+                        CurrentFinancialYear = currentFy.Value?.ToString() ?? "",
+                        CurrentQuarter = Convert.ToInt32(currentQ.Value?.ToString() ?? "0"),
+                        NextFinancialYear = nextFy.Value?.ToString() ?? "",
+                        NextQuarter = Convert.ToInt32(nextQ.Value?.ToString() ?? "0"),
+                        IsFinancialYearEnd = (isFyEnd.Value?.ToString() ?? "No") == "Yes",
+                        VerifiedCount = Convert.ToInt32(verifiedCount.Value?.ToString() ?? "0"),
+                        ForceClosedCount = Convert.ToInt32(forceClosedCount.Value?.ToString() ?? "0"),
+                        CarryForwardCount = Convert.ToInt32(carryForwardCount.Value?.ToString() ?? "0"),
+                        FyEndAdditionalCarryForward = Convert.ToInt32(fyEndExtra.Value?.ToString() ?? "0"),
+                        CertificateAlreadyUploaded = (certUploaded.Value?.ToString() ?? "No") == "Yes"
+                    };
+                }
+            }
+        }
+
+        // The certificate upload is embedded here (same underlying procedure
+        // the standalone Quarterly Report Submission feature uses) - if it's
+        // missing or fails validation, the whole close is rejected before
+        // any archiving/carry-forward happens.
+        public async Task<QuarterCloseResult> CloseQuarterAsync(string certificateFileName, byte[] certificateFileData, string closedBy)
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.close_quarter", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.Add("p_CERTIFICATE_FILE_NAME", OracleDbType.Varchar2, certificateFileName, ParameterDirection.Input);
+                    command.Parameters.Add("p_CERTIFICATE_FILE_DATA", OracleDbType.Blob, certificateFileData, ParameterDirection.Input);
+                    command.Parameters.Add("p_CLOSED_BY", OracleDbType.Varchar2, closedBy, ParameterDirection.Input);
+
+                    var archivedCount = command.Parameters.Add("p_POINTS_ARCHIVED", OracleDbType.Int32, ParameterDirection.Output);
+                    var carriedCount = command.Parameters.Add("p_POINTS_CARRIED_FORWARD", OracleDbType.Int32, ParameterDirection.Output);
+                    var newFy = command.Parameters.Add("p_NEW_FINANCIAL_YEAR", OracleDbType.Varchar2, 9, null, ParameterDirection.Output);
+                    var newQ = command.Parameters.Add("p_NEW_QUARTER", OracleDbType.Int32, ParameterDirection.Output);
+
+                    await command.ExecuteNonQueryAsync();
+
+                    return new QuarterCloseResult
+                    {
+                        PointsArchived = Convert.ToInt32(archivedCount.Value?.ToString() ?? "0"),
+                        PointsCarriedForward = Convert.ToInt32(carriedCount.Value?.ToString() ?? "0"),
+                        NewFinancialYear = newFy.Value?.ToString() ?? "",
+                        NewQuarter = Convert.ToInt32(newQ.Value?.ToString() ?? "0")
+                    };
+                }
+            }
+        }
+
+        public async Task<List<QuarterCloseLogEntry>> GetClosureHistoryAsync()
+        {
+            var list = new List<QuarterCloseLogEntry>();
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.get_closure_history", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            list.Add(new QuarterCloseLogEntry
+                            {
+                                SqNo = Convert.ToInt32(reader["SQ_NO"]),
+                                FinancialYear = reader["FINANCIAL_YEAR"].ToString() ?? "",
+                                Quarter = Convert.ToInt32(reader["QUARTER"]),
+                                IsFinancialYearEnd = reader["IS_FINANCIAL_YEAR_END"].ToString() == "Yes",
+                                NextFinancialYear = reader["NEXT_FINANCIAL_YEAR"].ToString() ?? "",
+                                NextQuarter = Convert.ToInt32(reader["NEXT_QUARTER"]),
+                                PointsArchivedCount = Convert.ToInt32(reader["POINTS_ARCHIVED_COUNT"]),
+                                PointsCarriedForwardCount = Convert.ToInt32(reader["POINTS_CARRIED_FORWARD_COUNT"]),
+                                CertificateFileName = reader["CERTIFICATE_FILE_NAME"] == DBNull.Value ? null : reader["CERTIFICATE_FILE_NAME"].ToString(),
+                                ClosedBy = reader["CLOSED_BY"].ToString(),
+                                ClosedDate = Convert.ToDateTime(reader["CLOSED_DATE"])
+                            });
+                        }
+                    }
+                }
+            }
+            return list;
+        }
+
+        public async Task<(List<RcmPointsMaster> Points, int TotalRecords)> SearchArchivedRcmPointsAsync(
+            string financialYear, int? quarter, int? rcmSqNo, string? searchTerm, int pageNumber = 1, int pageSize = 10)
+        {
+            var points = new List<RcmPointsMaster>();
+            int totalRecords = 0;
+
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.search_archived_rcm_points", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.Add("p_FINANCIAL_YEAR", OracleDbType.Varchar2, financialYear, ParameterDirection.Input);
+                    command.Parameters.Add("p_QUARTER", OracleDbType.Int32, (object?)quarter ?? DBNull.Value, ParameterDirection.Input);
+                    command.Parameters.Add("p_RCM_SQ_NO", OracleDbType.Int32, (object?)rcmSqNo ?? DBNull.Value, ParameterDirection.Input);
+                    command.Parameters.Add("p_SEARCH_TERM", OracleDbType.Varchar2, string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, ParameterDirection.Input);
+                    command.Parameters.Add("p_PAGE_NUMBER", OracleDbType.Int32, pageNumber, ParameterDirection.Input);
+                    command.Parameters.Add("p_PAGE_SIZE", OracleDbType.Int32, pageSize, ParameterDirection.Input);
+
+                    var pTotal = command.Parameters.Add("p_TOTAL_RECORDS", OracleDbType.Int32, ParameterDirection.Output);
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            points.Add(MapArchiveRow(reader));
+                        }
+                    }
+
+                    if (pTotal.Value != null && pTotal.Value != DBNull.Value)
+                    {
+                        totalRecords = Convert.ToInt32(pTotal.Value.ToString());
+                    }
+                }
+            }
+            return (points, totalRecords);
+        }
+
+        public async Task<RcmPointsMaster?> GetArchivedPointByIdAsync(int archiveSqNo)
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.get_archived_point_by_id", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add("p_ARCHIVE_SQ_NO", OracleDbType.Int32, archiveSqNo, ParameterDirection.Input);
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            var point = MapArchiveRow(reader);
+                            point.VerticalName = reader["VERTICAL_NAME"] == DBNull.Value ? null : reader["VERTICAL_NAME"].ToString();
+                            return point;
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        public async Task<List<RcmPointFilesMaster>> GetFilesForArchivedPointAsync(int archiveSqNo)
+        {
+            var files = new List<RcmPointFilesMaster>();
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.get_files_for_archived_point", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add("p_ARCHIVE_SQ_NO", OracleDbType.Int32, archiveSqNo, ParameterDirection.Input);
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            files.Add(new RcmPointFilesMaster
+                            {
+                                FileSqNo = Convert.ToInt32(reader["ARCHIVE_FILE_SQ_NO"]),
+                                RcmPointSqNo = Convert.ToInt32(reader["ARCHIVE_SQ_NO"]),
+                                FileName = reader["FILE_NAME"].ToString(),
+                                FileType = reader["FILE_TYPE"] == DBNull.Value ? null : reader["FILE_TYPE"].ToString(),
+                                FileSizeBytes = reader["FILE_SIZE_BYTES"] == DBNull.Value ? null : Convert.ToInt64(reader["FILE_SIZE_BYTES"]),
+                                UploadedBy = reader["UPLOADED_BY"].ToString(),
+                                UploadedDate = Convert.ToDateTime(reader["UPLOADED_DATE"])
+                            });
+                        }
+                    }
+                }
+            }
+            return files;
+        }
+
+        public async Task<RcmPointFilesMaster?> GetArchivedFileByIdAsync(int archiveFileSqNo)
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.get_archived_file_by_id", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+                    command.Parameters.Add("p_ARCHIVE_FILE_SQ_NO", OracleDbType.Int32, archiveFileSqNo, ParameterDirection.Input);
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    using (var reader = await command.ExecuteReaderAsync())
+                    {
+                        if (await reader.ReadAsync())
+                        {
+                            return new RcmPointFilesMaster
+                            {
+                                FileSqNo = Convert.ToInt32(reader["ARCHIVE_FILE_SQ_NO"]),
+                                RcmPointSqNo = Convert.ToInt32(reader["ARCHIVE_SQ_NO"]),
+                                FileName = reader["FILE_NAME"].ToString(),
+                                FileType = reader["FILE_TYPE"] == DBNull.Value ? null : reader["FILE_TYPE"].ToString(),
+                                FileSizeBytes = reader["FILE_SIZE_BYTES"] == DBNull.Value ? null : Convert.ToInt64(reader["FILE_SIZE_BYTES"]),
+                                FileData = (byte[])reader["FILE_DATA"],
+                                UploadedBy = reader["UPLOADED_BY"].ToString(),
+                                UploadedDate = Convert.ToDateTime(reader["UPLOADED_DATE"])
+                            };
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Shared mapping for RCM_POINTS_ARCHIVE rows (search + get-by-id both use this).
+        // Only maps the fields the Historical Data screens actually display -
+        // extend this if you need more archive fields surfaced in the UI later.
+        private static RcmPointsMaster MapArchiveRow(OracleDataReader reader)
+        {
+            return new RcmPointsMaster
+            {
+                ArchiveSqNo = Convert.ToInt32(reader["ARCHIVE_SQ_NO"]),
+                OriginalSqNo = reader["ORIGINAL_SQ_NO"] == DBNull.Value ? null : Convert.ToInt32(reader["ORIGINAL_SQ_NO"]),
+                SqNo = reader["ORIGINAL_SQ_NO"] == DBNull.Value ? 0 : Convert.ToInt32(reader["ORIGINAL_SQ_NO"]),
+                RcmSqNo = Convert.ToInt32(reader["RCM_SQ_NO"]),
+                VerticalId = reader["VERTICAL_ID"] == DBNull.Value ? null : reader["VERTICAL_ID"].ToString(),
+                Process = reader["PROCESS"] == DBNull.Value ? null : reader["PROCESS"].ToString(),
+                SubProcess = reader["SUB_PROCESS"] == DBNull.Value ? null : reader["SUB_PROCESS"].ToString(),
+                RiskDescription = reader["RISK_DESCRIPTION"] == DBNull.Value ? null : reader["RISK_DESCRIPTION"].ToString(),
+                RiskRatingHJ = reader["RISK_RATING_H_J"] == DBNull.Value ? null : reader["RISK_RATING_H_J"].ToString(),
+                ControlStrength = reader["CONTROL_STRENGTH"] == DBNull.Value ? null : reader["CONTROL_STRENGTH"].ToString(),
+                ManagementReply = reader["MANAGEMENT_REPLY"] == DBNull.Value ? null : reader["MANAGEMENT_REPLY"].ToString(),
+                AdminReply = reader["ADMIN_REPLY"] == DBNull.Value ? null : reader["ADMIN_REPLY"].ToString(),
+                StatusAtClose = reader["STATUS_AT_CLOSE"] == DBNull.Value ? null : reader["STATUS_AT_CLOSE"].ToString(),
+                Status = reader["STATUS_AT_CLOSE"] == DBNull.Value ? "" : reader["STATUS_AT_CLOSE"].ToString() ?? "",
+                FinancialYear = reader["FINANCIAL_YEAR"].ToString(),
+                Quarter = Convert.ToInt32(reader["QUARTER"]),
+                ClosureType = reader["CLOSURE_TYPE"].ToString(),
+                ArchivedBy = reader["ARCHIVED_BY"].ToString(),
+                ArchivedDate = Convert.ToDateTime(reader["ARCHIVED_DATE"]),
+                CreatedBy = reader["CREATED_BY"] == DBNull.Value ? null : reader["CREATED_BY"].ToString(),
+                RcmName = reader["RCM_NAME"] == DBNull.Value ? null : reader["RCM_NAME"].ToString()
+            };
+        }
+
+        #endregion
     }
 }
