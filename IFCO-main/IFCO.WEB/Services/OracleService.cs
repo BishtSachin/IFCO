@@ -2229,6 +2229,47 @@ namespace IFCO.WEB.Services
             };
         }
 
+        // Full (non-paginated) export for the Historical Data "Download
+        // Excel" button, same filters as SearchArchivedRcmPointsAsync.
+        // Uses OracleDataAdapter + ClosedXML, same pattern as
+        // GenerateReportExcelAsync (Report Generation feature).
+        public async Task<byte[]> GenerateArchivedRcmPointsExcelAsync(string financialYear, int? quarter, int? rcmSqNo, string? searchTerm)
+        {
+            using (var connection = new OracleConnection(_connectionString))
+            {
+                await connection.OpenAsync();
+                using (var command = new OracleCommand("IFCO.RCM_QUARTER_CLOSE_PKG.export_archived_rcm_points", connection))
+                {
+                    command.CommandType = CommandType.StoredProcedure;
+
+                    command.Parameters.Add("p_FINANCIAL_YEAR", OracleDbType.Varchar2, financialYear, ParameterDirection.Input);
+                    command.Parameters.Add("p_QUARTER", OracleDbType.Int32, (object?)quarter ?? DBNull.Value, ParameterDirection.Input);
+                    command.Parameters.Add("p_RCM_SQ_NO", OracleDbType.Int32, (object?)rcmSqNo ?? DBNull.Value, ParameterDirection.Input);
+                    command.Parameters.Add("p_SEARCH_TERM", OracleDbType.Varchar2, string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, ParameterDirection.Input);
+                    command.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                    var dt = new DataTable("HistoricalData");
+                    using (var adapter = new OracleDataAdapter(command))
+                    {
+                        adapter.Fill(dt);
+                    }
+
+                    using (var workbook = new XLWorkbook())
+                    {
+                        var worksheet = workbook.Worksheets.Add("Historical Data");
+                        worksheet.Cell(1, 1).InsertTable(dt);
+                        worksheet.Columns().AdjustToContents();
+
+                        using (var stream = new MemoryStream())
+                        {
+                            workbook.SaveAs(stream);
+                            return stream.ToArray();
+                        }
+                    }
+                }
+            }
+        }
+
         #endregion
     }
 }

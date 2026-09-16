@@ -3,13 +3,14 @@
 @using IFCO.WEB.Services
 @using static IFCO.WEB.Components.Shared.Modal
 @inject OracleService DbService
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 @attribute [Authorize]
 
 <h3>Historical Data</h3>
 <p class="text-muted">Read-only view of archived RCM Points for past financial years and quarters - for reference, reporting, audit, and compliance.</p>
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-3 align-items-end">
     <div class="col-md-3">
         <label class="form-label fw-bold">Financial Year</label>
         <select class="form-select" @bind="selectedFinancialYear" @bind:after="OnFiltersChanged">
@@ -29,7 +30,7 @@
             <option value="4">Q4</option>
         </select>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <label class="form-label fw-bold">RCM</label>
         <SearchableSelect TItem="RcmDropdownItem"
                           TValue="int"
@@ -43,6 +44,18 @@
     <div class="col-md-3">
         <label class="form-label fw-bold">Search</label>
         <input type="text" class="form-control" placeholder="Search by Process or Risk..." value="@searchTerm" @oninput="OnSearchInput" />
+    </div>
+    <div class="col-md-1">
+        <button class="btn btn-outline-success w-100" title="Download the current filtered results as Excel" @onclick="HandleDownloadExcel" disabled="@isDownloading">
+            @if (isDownloading)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+            else
+            {
+                <i class="bi bi-file-earmark-excel"></i>
+            }
+        </button>
     </div>
 </div>
 
@@ -163,6 +176,7 @@ else
     private int totalPages = 1;
     private const int PageSize = 10;
     private bool isLoading = true;
+    private bool isDownloading = false;
 
     private bool isModalVisible = false;
     private RcmPointsMaster? selectedPoint;
@@ -261,5 +275,37 @@ else
         isModalVisible = false;
         selectedPoint = null;
         selectedPointFiles = null;
+    }
+
+    private async Task HandleDownloadExcel()
+    {
+        if (string.IsNullOrEmpty(selectedFinancialYear)) return;
+
+        try
+        {
+            isDownloading = true;
+
+            var fileBytes = await DbService.GenerateArchivedRcmPointsExcelAsync(
+                selectedFinancialYear,
+                selectedQuarter == 0 ? null : selectedQuarter,
+                selectedRcmSqNo == 0 ? null : selectedRcmSqNo,
+                searchTerm);
+
+            using var stream = new MemoryStream(fileBytes);
+            using var streamRef = new DotNetStreamReference(stream);
+
+            var quarterLabel = selectedQuarter == 0 ? "AllQuarters" : $"Q{selectedQuarter}";
+            var fileName = $"HistoricalData_{selectedFinancialYear}_{quarterLabel}_{DateTime.Now:yyyyMMddHHmm}.xlsx";
+
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error generating Excel: {ex.Message}");
+        }
+        finally
+        {
+            isDownloading = false;
+        }
     }
 }
