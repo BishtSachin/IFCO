@@ -52,6 +52,24 @@
 ::deep .accordion-button {
     padding: 0.8rem 1.25rem;
     font-size: 1rem;
+    font-weight: 600;
+}
+
+/* Phase 4: a subtle accent border on whichever section is currently open,
+   so it's easier to tell at a glance where you are in a long form. */
+::deep .accordion-item {
+    border-left: 3px solid transparent;
+    transition: border-color 0.15s ease-in-out;
+}
+
+::deep .accordion-item:has(.accordion-collapse.show) {
+    border-left-color: var(--ub-red, #DA251C);
+}
+
+/* Phase 4: slightly tighter field spacing within the form so more of each
+   section is visible without scrolling, without touching field layout. */
+::deep .accordion-body .mb-3 {
+    margin-bottom: 0.85rem !important;
 }
 
 /* NEW: Reusable class to make form sections read-only */
