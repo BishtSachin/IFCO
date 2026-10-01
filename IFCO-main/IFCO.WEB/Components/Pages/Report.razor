@@ -39,16 +39,6 @@
                     <label class="form-check-label" for="optRcm">RCM Wise</label>
                 </div>
 
-                @* HIDE Custom Dates option if the user is a Vertical User *@
-                @if (!isVerticalUser)
-                {
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" name="reportType" id="optDate"
-                               checked="@(selectedReportType == "Date")"
-                               @onchange="@(() => OnReportTypeChanged("Date"))">
-                        <label class="form-check-label" for="optDate">Custom Dates</label>
-                    </div>
-                }
             </div>
         </div>
 
@@ -85,17 +75,6 @@
                                       Placeholder="-- Select RCM --" />
                 </div>
             }
-            else if (selectedReportType == "Date")
-            {
-                <div class="col-md-3">
-                    <label class="form-label">From Date:</label>
-                    <input type="date" class="form-control" @bind="fromDate" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">To Date:</label>
-                    <input type="date" class="form-control" @bind="toDate" />
-                </div>
-            }
         </div>
 
         @* 3. Download Button *@
@@ -128,8 +107,6 @@
     private string selectedReportType = "Vertical";
     private string? selectedVerticalId;
     private string? selectedRcmId;
-    private DateTime? fromDate;
-    private DateTime? toDate;
     private bool isDownloading = false;
 
     // Dropdown Data
@@ -186,8 +163,6 @@
         // Reset inputs
         selectedVerticalId = null;
         selectedRcmId = null;
-        fromDate = null;
-        toDate = null;
     }
 
     private async Task DownloadReport()
@@ -203,11 +178,6 @@
             await JSRuntime.InvokeVoidAsync("alert", "Please select an RCM.");
             return;
         }
-        if (selectedReportType == "Date" && (fromDate == null || toDate == null))
-        {
-            await JSRuntime.InvokeVoidAsync("alert", "Please select both From and To dates.");
-            return;
-        }
 
         try
         {
@@ -216,9 +186,7 @@
             var fileBytes = await DbService.GenerateReportExcelAsync(
                 selectedReportType,
                 selectedVerticalId,
-                selectedRcmId,
-                fromDate,
-                toDate
+                selectedRcmId
             );
 
             using var stream = new MemoryStream(fileBytes);

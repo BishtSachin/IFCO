@@ -1680,7 +1680,12 @@ namespace IFCO.WEB.Services
         }
 
         // 3. Generate Report and Return Excel Byte Array
-        public async Task<byte[]> GenerateReportExcelAsync(string reportType, string? verticalId, string? rcmId, DateTime? fromDate, DateTime? toDate)
+        // Both report types are scoped to the current Financial Year/Quarter
+        // inside the stored procedures themselves (REPORTS_PKG), and exclude
+        // 'Submitted for Deletion' (soft-deleted) points. Custom Dates was
+        // retired - historical/period-based reporting now lives in
+        // Historical Data instead.
+        public async Task<byte[]> GenerateReportExcelAsync(string reportType, string? verticalId, string? rcmId)
         {
             using (var conn = new OracleConnection(_connectionString))
             {
@@ -1702,12 +1707,6 @@ namespace IFCO.WEB.Services
                         cmd.CommandText = "IFCO.REPORTS_PKG.get_report_by_rcm_list";
                         cmd.Parameters.Add("p_RCM_SQ_NO_LIST", OracleDbType.Varchar2).Value = rcmId;
                     }
-                    else if (reportType == "Date")
-                    {
-                        cmd.CommandText = "IFCO.REPORTS_PKG.get_report_by_date_range";
-                        cmd.Parameters.Add("p_FROM_DATE", OracleDbType.Date).Value = fromDate;
-                        cmd.Parameters.Add("p_TO_DATE", OracleDbType.Date).Value = toDate;
-                    }
 
                     // Output Cursor
                     cmd.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
@@ -1718,6 +1717,7 @@ namespace IFCO.WEB.Services
                     {
                         adapter.Fill(dt);
                     }
+                    ExcelExportHelper.SanitizeDateColumns(dt);
 
                     // Convert DataTable to Excel (XLSX) using ClosedXML
                     using (var workbook = new XLWorkbook())
@@ -2253,6 +2253,7 @@ namespace IFCO.WEB.Services
                     {
                         adapter.Fill(dt);
                     }
+                    ExcelExportHelper.SanitizeDateColumns(dt);
 
                     using (var workbook = new XLWorkbook())
                     {
