@@ -58,6 +58,7 @@
                                       TextSelector="@(v => v.VerticalName)"
                                       SelectedValue="selectedVerticalId"
                                       SelectedValueChanged="@((string v) => selectedVerticalId = v)"
+                                      IsPinned="@(v => v.VerticalId == AllValue)"
                                       Placeholder="-- Select Vertical --" />
                 </div>
             }
@@ -72,6 +73,7 @@
                                       TextSelector="@(r => r.RcmName)"
                                       SelectedValue="selectedRcmId"
                                       SelectedValueChanged="@((string v) => selectedRcmId = v)"
+                                      IsPinned="@(r => r.RcmSqNo == AllValue)"
                                       Placeholder="-- Select RCM --" />
                 </div>
             }
@@ -102,6 +104,9 @@
 
     private bool isVerticalUser = false;
     private string? userVerticalIdClaim;
+
+    // Sentinel value for the pinned "All ..." dropdown entries. Never a real ID.
+    private const string AllValue = "__ALL__";
 
     // State Variables
     private string selectedReportType = "Vertical";
@@ -139,7 +144,7 @@
             // Vertical User: Only load RCMs mapped to their vertical
             if (!string.IsNullOrEmpty(userVerticalIdClaim))
             {
-                rcmList = await DbService.GetActiveRcmsByVerticalAsync(userVerticalIdClaim);
+                rcmList = WithAllRcms(await DbService.GetActiveRcmsByVerticalAsync(userVerticalIdClaim));
             }
             else
             {
@@ -150,10 +155,24 @@
         else
         {
             // Admin User: Load everything normally
-            verticalsList = await DbService.GetActiveVerticalsAsync();
-            // Assuming you have this method or the one from previous steps
-            rcmList = await DbService.GetActiveRcmsAsyncForReport();
+            verticalsList = WithAllVerticals(await DbService.GetActiveVerticalsAsync());
+            rcmList = WithAllRcms(await DbService.GetActiveRcmsAsyncForReport());
         }
+    }
+
+    // Prepend the "All" entry only when there is something to be "all" of.
+    private static List<VerticalDropdownItem> WithAllVerticals(List<VerticalDropdownItem> items)
+    {
+        if (items.Count > 0)
+            items.Insert(0, new VerticalDropdownItem { VerticalId = AllValue, VerticalName = "All Verticals" });
+        return items;
+    }
+
+    private static List<RcmDropdownItem> WithAllRcms(List<RcmDropdownItem> items)
+    {
+        if (items.Count > 0)
+            items.Insert(0, new RcmDropdownItem { RcmSqNo = AllValue, RcmName = "All RCMs" });
+        return items;
     }
 
     private void OnReportTypeChanged(string newType)
@@ -183,16 +202,37 @@
         {
             isDownloading = true;
 
-            var fileBytes = await DbService.GenerateReportExcelAsync(
-                selectedReportType,
-                selectedVerticalId,
-                selectedRcmId
-            );
+            byte[] fileBytes;
+            bool isAll = selectedReportType == "Vertical"
+                ? selectedVerticalId == AllValue
+                : selectedRcmId == AllValue;
+
+            if (isAll)
+            {
+                // One workbook, one sheet per vertical / RCM. The target list
+                // is exactly what this user's dropdown already offers, so
+                // "All" never exposes more than they could pick one by one.
+                var targets = selectedReportType == "Vertical"
+                    ? (verticalsList ?? new()).Where(v => v.VerticalId != AllValue)
+                          .Select(v => (v.VerticalId, v.VerticalName)).ToList()
+                    : (rcmList ?? new()).Where(r => r.RcmSqNo != AllValue)
+                          .Select(r => (r.RcmSqNo, r.RcmName)).ToList();
+
+                fileBytes = await DbService.GenerateAllReportExcelAsync(selectedReportType, targets);
+            }
+            else
+            {
+                fileBytes = await DbService.GenerateReportExcelAsync(
+                    selectedReportType,
+                    selectedVerticalId,
+                    selectedRcmId
+                );
+            }
 
             using var stream = new MemoryStream(fileBytes);
             using var streamRef = new DotNetStreamReference(stream);
 
-            string fileName = $"Report_{selectedReportType}_{DateTime.Now:yyyyMMddHHmm}.xlsx";
+            string fileName = $"Report_{(isAll ? "All" : "")}{selectedReportType}_{DateTime.Now:yyyyMMddHHmm}.xlsx";
 
             await JSRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
         }

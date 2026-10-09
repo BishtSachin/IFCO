@@ -1735,6 +1735,93 @@ namespace IFCO.WEB.Services
                 }
             }
         }
+        // 3b. "All" report: one workbook, one worksheet per Vertical (or per RCM).
+        // `targets` is the exact list the caller is allowed to see (all active
+        // verticals/RCMs for Admin/Checker; only the user's own vertical's RCMs
+        // for a Vertical user), so "All" can never widen a user's access.
+        // Each sheet runs the same stored procedure as the single report, so
+        // the quarter scoping and status rules stay identical.
+        // Targets with no rows in the current quarter are skipped; if nothing
+        // at all is found, a single "No Data" sheet is returned.
+        public async Task<byte[]> GenerateAllReportExcelAsync(string reportType, IReadOnlyList<(string Id, string Name)> targets)
+        {
+            using (var conn = new OracleConnection(_connectionString))
+            {
+                await conn.OpenAsync();
+                using (var workbook = new XLWorkbook())
+                {
+                    var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    int sheetCount = 0;
+
+                    foreach (var target in targets)
+                    {
+                        using (var cmd = new OracleCommand())
+                        {
+                            cmd.Connection = conn;
+                            cmd.CommandType = CommandType.StoredProcedure;
+
+                            if (reportType == "Vertical")
+                            {
+                                cmd.CommandText = "IFCO.REPORTS_PKG.get_report_by_vertical";
+                                cmd.Parameters.Add("p_VERTICAL_ID", OracleDbType.Varchar2).Value = target.Id;
+                            }
+                            else
+                            {
+                                cmd.CommandText = "IFCO.REPORTS_PKG.get_report_by_rcm_list";
+                                cmd.Parameters.Add("p_RCM_SQ_NO_LIST", OracleDbType.Varchar2).Value = target.Id;
+                            }
+                            cmd.Parameters.Add("p_RESULT_CURSOR", OracleDbType.RefCursor, ParameterDirection.Output);
+
+                            var dt = new DataTable("ReportData");
+                            using (var adapter = new OracleDataAdapter(cmd))
+                            {
+                                adapter.Fill(dt);
+                            }
+                            if (dt.Rows.Count == 0) continue;
+
+                            ExcelExportHelper.SanitizeDateColumns(dt);
+
+                            var worksheet = workbook.Worksheets.Add(MakeUniqueSheetName(target.Name, usedNames));
+                            worksheet.Cell(1, 1).InsertTable(dt);
+                            worksheet.Columns().AdjustToContents();
+                            sheetCount++;
+                        }
+                    }
+
+                    if (sheetCount == 0)
+                    {
+                        var ws = workbook.Worksheets.Add("No Data");
+                        ws.Cell(1, 1).Value = "No records found for the current quarter.";
+                    }
+
+                    using (var stream = new MemoryStream())
+                    {
+                        workbook.SaveAs(stream);
+                        return stream.ToArray();
+                    }
+                }
+            }
+        }
+
+        // Excel sheet names: max 31 chars, none of  [ ] : * ? / \ , unique
+        // (case-insensitive), not blank.
+        private static string MakeUniqueSheetName(string? rawName, HashSet<string> used)
+        {
+            var cleaned = new string((rawName ?? "").Where(c => "[]:*?/\\".IndexOf(c) < 0).ToArray()).Trim().Trim('\'');
+            if (cleaned.Length == 0) cleaned = "Sheet";
+            if (cleaned.Length > 31) cleaned = cleaned.Substring(0, 31).TrimEnd();
+
+            var candidate = cleaned;
+            int n = 2;
+            while (!used.Add(candidate))
+            {
+                var suffix = $" ({n++})";
+                var baseName = cleaned.Length + suffix.Length > 31 ? cleaned.Substring(0, 31 - suffix.Length).TrimEnd() : cleaned;
+                candidate = baseName + suffix;
+            }
+            return candidate;
+        }
+
         // 4. Fetch Active RCMs by Vertical ID (For Vertical Users)
         public async Task<List<RcmDropdownItem>> GetActiveRcmsByVerticalAsync(string verticalId)
         {

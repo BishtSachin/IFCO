@@ -64,6 +64,12 @@
     [Parameter]
     public bool Disabled { get; set; } = false;
 
+    // Optional. Items for which this returns true are pinned to the top of
+    // the list (e.g. an "All" entry) instead of being sorted alphabetically
+    // with the rest. Leave null for the normal fully-alphabetical behaviour.
+    [Parameter]
+    public Func<TItem, bool>? IsPinned { get; set; }
+
     private bool isOpen = false;
     private string searchText = "";
     private bool userHasTyped = false;
@@ -71,10 +77,11 @@
     private CancellationTokenSource? closeCts;
 
     // Component always alphabetizes the list it renders - callers don't
-    // need to sort before passing Items in.
+    // need to sort before passing Items in. Pinned items (if any) come first.
     private List<TItem> SortedItems =>
         (Items ?? Enumerable.Empty<TItem>())
-            .OrderBy(TextSelector, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(i => IsPinned != null && IsPinned(i) ? 0 : 1)
+            .ThenBy(TextSelector, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
     // Only filters once the user has actually typed something. Before that
