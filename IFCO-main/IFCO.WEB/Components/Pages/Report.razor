@@ -39,6 +39,14 @@
                     <label class="form-check-label" for="optRcm">RCM Wise</label>
                 </div>
 
+                @* Consolidated: everything in one worksheet (no dropdown needed) *@
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="reportType" id="optConsolidated"
+                           checked="@(selectedReportType == "Consolidated")"
+                           @onchange="@(() => OnReportTypeChanged("Consolidated"))">
+                    <label class="form-check-label" for="optConsolidated">Consolidated Report</label>
+                </div>
+
             </div>
         </div>
 
@@ -75,6 +83,17 @@
                                       SelectedValueChanged="@((string v) => selectedRcmId = v)"
                                       IsPinned="@(r => r.RcmSqNo == AllValue)"
                                       Placeholder="-- Select RCM --" />
+                </div>
+            }
+            else if (selectedReportType == "Consolidated")
+            {
+                <div class="col-md-8">
+                    <div class="alert alert-info mb-0" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>
+                        One Excel worksheet with the current quarter's points for
+                        @(isVerticalUser ? "all of your RCMs" : "all RCMs and verticals"),
+                        with the RCM and Vertical names in each row.
+                    </div>
                 </div>
             }
         </div>
@@ -198,6 +217,21 @@
             return;
         }
 
+        // Consolidated = every RCM this user is allowed to see, in one worksheet.
+        // Built from the same list that feeds the RCM dropdown, so a Vertical user
+        // only ever gets the RCMs mapped to their own vertical.
+        string? consolidatedRcmIds = null;
+        if (selectedReportType == "Consolidated")
+        {
+            var ids = (rcmList ?? new()).Where(r => r.RcmSqNo != AllValue).Select(r => r.RcmSqNo).ToList();
+            if (ids.Count == 0)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "There are no RCMs available to include in the report.");
+                return;
+            }
+            consolidatedRcmIds = string.Join(",", ids);
+        }
+
         try
         {
             isDownloading = true;
@@ -205,9 +239,14 @@
             byte[] fileBytes;
             bool isAll = selectedReportType == "Vertical"
                 ? selectedVerticalId == AllValue
-                : selectedRcmId == AllValue;
+                : selectedReportType == "RCM" && selectedRcmId == AllValue;
 
-            if (isAll)
+            if (consolidatedRcmIds != null)
+            {
+                // get_report_by_rcm_list already accepts a comma-separated list of RCM numbers
+                fileBytes = await DbService.GenerateReportExcelAsync("RCM", null, consolidatedRcmIds);
+            }
+            else if (isAll)
             {
                 // One workbook, one sheet per vertical / RCM. The target list
                 // is exactly what this user's dropdown already offers, so

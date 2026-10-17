@@ -1272,7 +1272,12 @@ namespace IFCO.WEB.Services
                                     AdminReply = reader.IsDBNull(reader.GetOrdinal("ADMIN_REPLY")) ? null : reader.GetString(reader.GetOrdinal("ADMIN_REPLY")),
                                     Status = reader.GetString(reader.GetOrdinal("STATUS")),
                                     LastEditedByRole = reader.IsDBNull(reader.GetOrdinal("LAST_EDITED_BY_ROLE")) ? null : reader.GetString(reader.GetOrdinal("LAST_EDITED_BY_ROLE")),
-                                    CheckerRemarks = reader.IsDBNull(reader.GetOrdinal("CHECKER_REMARKS")) ? null : reader.GetString(reader.GetOrdinal("CHECKER_REMARKS"))
+                                    CheckerRemarks = reader.IsDBNull(reader.GetOrdinal("CHECKER_REMARKS")) ? null : reader.GetString(reader.GetOrdinal("CHECKER_REMARKS")),
+                                    // Shown in the read-only "Status and Audit Details" section of the RCM Point form
+                                    CreatedBy = reader.IsDBNull(reader.GetOrdinal("CREATED_BY")) ? null : reader.GetString(reader.GetOrdinal("CREATED_BY")),
+                                    CreatedDate = reader.IsDBNull(reader.GetOrdinal("CREATED_DATE")) ? default : reader.GetDateTime(reader.GetOrdinal("CREATED_DATE")),
+                                    UpdatedBy = reader.IsDBNull(reader.GetOrdinal("UPDATED_BY")) ? null : reader.GetString(reader.GetOrdinal("UPDATED_BY")),
+                                    UpdatedDate = reader.IsDBNull(reader.GetOrdinal("UPDATED_DATE")) ? null : reader.GetDateTime(reader.GetOrdinal("UPDATED_DATE"))
                                 };
                             }
                         }
@@ -1619,6 +1624,84 @@ namespace IFCO.WEB.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during calling method DeleteRcmPointAsync for SQ_NO {sqNo}", sqNo);
+                throw;
+            }
+        }
+
+        // ---- Revised workflow (RCM_WORKFLOW_PKG) ----
+
+        // Admin is satisfied with the management reply: Management Submitted -> Admin Recommended.
+        // The point is then complete and no longer goes back to the vertical.
+        // adminReply is optional; when blank the existing Admin Reply is kept.
+        public async Task AdminRecommendPointAsync(int sqNo, string? adminReply, string updatedBy)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_WORKFLOW_PKG.admin_recommend_point", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_SQ_NO", OracleDbType.Int32, sqNo, ParameterDirection.Input);
+                        command.Parameters.Add("p_ADMIN_REPLY", OracleDbType.NVarchar2, string.IsNullOrWhiteSpace(adminReply) ? (object)DBNull.Value : adminReply, ParameterDirection.Input);
+                        command.Parameters.Add("p_UPDATED_BY", OracleDbType.NVarchar2, updatedBy, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method AdminRecommendPointAsync for SQ_NO {sqNo}", sqNo);
+                throw;
+            }
+        }
+
+        // Maker/Admin requests deletion. Unlike SetRcmPointStatusAsync("Submitted for Deletion"),
+        // this remembers the previous status so a Checker can decline the request.
+        public async Task RequestRcmPointDeletionAsync(int sqNo, string updatedBy)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_WORKFLOW_PKG.request_point_deletion", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_SQ_NO", OracleDbType.Int32, sqNo, ParameterDirection.Input);
+                        command.Parameters.Add("p_UPDATED_BY", OracleDbType.NVarchar2, updatedBy, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method RequestRcmPointDeletionAsync for SQ_NO {sqNo}", sqNo);
+                throw;
+            }
+        }
+
+        // Checker declines the deletion request: the point returns to the status it had before.
+        public async Task DeclineRcmPointDeletionAsync(int sqNo, string updatedBy)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_WORKFLOW_PKG.decline_point_deletion", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_SQ_NO", OracleDbType.Int32, sqNo, ParameterDirection.Input);
+                        command.Parameters.Add("p_UPDATED_BY", OracleDbType.NVarchar2, updatedBy, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method DeclineRcmPointDeletionAsync for SQ_NO {sqNo}", sqNo);
                 throw;
             }
         }

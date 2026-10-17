@@ -58,6 +58,15 @@
                         <input type="text" autocomplete="off" class="form-control" placeholder="Search by Process or Risk..." value="@searchTerm" @oninput="OnSearchTermChanged" />
                     </div>
                 </div>
+                <div class="col-md-3">
+                    <select class="form-select" value="@selectedStatusFilter" @onchange="OnStatusFilterChanged" title="Filter by status">
+                        <option value="">All statuses</option>
+                        @foreach (var statusOption in StatusFilterOptions)
+                        {
+                            <option value="@statusOption" selected="@(statusOption == selectedStatusFilter)">@statusOption</option>
+                        }
+                    </select>
+                </div>
             </div>
             @if (isLoading)
             {
@@ -106,7 +115,7 @@
                                                 disabled="@IsEditButtonDisabled(point)">
                                             <i class="bi bi-pencil-square"></i> Edit
                                         </button>
-                                        @if (currentUserRole == "Maker" || currentUserRole == "Admin")
+                                        @if (CanRequestDeletion(point))
                                         {
                                             <button class="btn btn-sm btn-outline-danger ms-2" @onclick="() => HandleDeleteRequest(point)">
                                                 <i class="bi bi-trash"></i> Delete
@@ -164,7 +173,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingOne">
                                         <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
-                                            Section 1 of 9: Process and Risk Details
+                                            Section 1 of 10: Process and Risk Details
                                         </button>
                                     </h2>
                                     <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#rcmPointAccordion">
@@ -191,7 +200,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingTwo">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
-                                            Section 2 of 9: Impact and Risk Rating
+                                            Section 2 of 10: Impact and Risk Rating
                                         </button>
                                     </h2>
                                     <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -240,7 +249,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingThree">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
-                                            Section 3 of 9: Significant Accounting Disclosures
+                                            Section 3 of 10: Significant Accounting Disclosures
                                         </button>
                                     </h2>
                                     <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -261,7 +270,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingFour">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour">
-                                            Section 4 of 9: Assertions
+                                            Section 4 of 10: Assertions
                                         </button>
                                     </h2>
                                     <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -322,7 +331,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingFive">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFive">
-                                            Section 5 of 9: Controls
+                                            Section 5 of 10: Controls
                                         </button>
                                     </h2>
                                     <div id="collapseFive" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -400,7 +409,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingSix">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSix">
-                                            Section 6 of 9: Key Controls and Frequency
+                                            Section 6 of 10: Key Controls and Frequency
                                         </button>
                                     </h2>
                                     <div id="collapseSix" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -431,7 +440,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingSeven">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSeven">
-                                            Section 7 of 9: Design and Response Plan
+                                            Section 7 of 10: Design and Response Plan
                                         </button>
                                     </h2>
                                     <div id="collapseSeven" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -458,7 +467,7 @@
                                 <div class="accordion-item">
                                     <h2 class="accordion-header" id="headingEight">
                                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseEight">
-                                            Section 8 of 9: Testing Status
+                                            Section 8 of 10: Testing Status
                                         </button>
                                     </h2>
                                     <div id="collapseEight" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
@@ -494,23 +503,70 @@
                                 </div>
                             </div>
                         </div>
-                        @if (currentUserLoginType == "Vertical")
+                        @* Section 9: visible to everyone. Editable only by the person whose turn it is
+                           (Vertical on Verified / Admin Submitted, Admin on Management Submitted);
+                           everybody else - including all Consultant users - sees it read-only. *@
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingNine">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseNine">
+                                    Section 9 of 10: Vertical/Admin
+                                </button>
+                            </h2>
+                            <div id="collapseNine" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                <div class="accordion-body">
+                                    @if (!CanVerticalReply && !CanAdminReply)
+                                    {
+                                        <p class="text-muted small mb-3"><i class="bi bi-lock me-1"></i>Read-only: conversation between the Vertical and the Admin.</p>
+                                    }
+                                    <div class="mb-3">
+                                        <label class="form-label">Management Reply</label>
+                                        <InputTextArea @bind-Value="currentRcmPoint.ManagementReply" class="form-control" rows="3" readonly="@(!CanVerticalReply)" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Admin Reply</label>
+                                        <InputTextArea @bind-Value="currentRcmPoint.AdminReply" class="form-control" rows="3" readonly="@(!CanAdminReply)" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        @* Section 10: read-only status and audit details for Consultant and Admin users.
+                           All values come straight from RCM_POINTS_MASTER via get_rcm_point_by_id. *@
+                        @if (!isAddingNew && (currentUserLoginType == "Consultant" || currentUserRole == "Admin"))
                         {
                             <div class="accordion-item">
-                                <h2 class="accordion-header" id="headingNine">
-                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseNine">
-                                        Section 9 of 9: Vertical/Admin
+                                <h2 class="accordion-header" id="headingTen">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTen">
+                                        Section 10 of 10: Status and Audit Details
                                     </button>
                                 </h2>
-                                <div id="collapseNine" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
+                                <div id="collapseTen" class="accordion-collapse collapse" data-bs-parent="#rcmPointAccordion">
                                     <div class="accordion-body">
+                                        <p class="text-muted small mb-3"><i class="bi bi-lock me-1"></i>Read-only.</p>
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Status</label>
+                                                <div><span class="badge @GetStatusBadgeClass(currentRcmPoint.Status) fs-6">@currentRcmPoint.Status</span></div>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Created By</label>
+                                                <input type="text" class="form-control" value="@(currentRcmPoint.CreatedBy ?? "-")" readonly />
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Updated By</label>
+                                                <input type="text" class="form-control" value="@(currentRcmPoint.UpdatedBy ?? "-")" readonly />
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label class="form-label">Updated Date</label>
+                                                <input type="text" class="form-control" value="@(currentRcmPoint.UpdatedDate?.ToString("dd-MMM-yyyy hh:mm tt") ?? "-")" readonly />
+                                            </div>
+                                        </div>
                                         <div class="mb-3">
-                                            <label class="form-label">Management Reply</label>
-                                            <InputTextArea @bind-Value="currentRcmPoint.ManagementReply" class="form-control" rows="3" readonly="@(currentUserRole != "Vertical")" />
+                                            <label class="form-label">Rejection Reason</label>
+                                            <textarea class="form-control" rows="3" readonly>@currentRcmPoint.RejectionReason</textarea>
                                         </div>
                                         <div class="mb-3">
                                             <label class="form-label">Admin Reply</label>
-                                            <InputTextArea @bind-Value="currentRcmPoint.AdminReply" class="form-control" rows="3" readonly="@(currentUserRole != "Admin")" />
+                                            <textarea class="form-control" rows="3" readonly>@currentRcmPoint.AdminReply</textarea>
                                         </div>
                                     </div>
                                 </div>
@@ -655,8 +711,23 @@
             }
             @if (currentUserRole == "Checker" && currentRcmPoint.Status == "Submitted for Deletion")
             {
+                <button type="button" class="btn btn-outline-secondary" @onclick="HandleDeclineDeletion">
+                    <i class="bi bi-arrow-counterclockwise me-2"></i>Decline Deletion
+                </button>
                 <button type="button" class="btn btn-danger" @onclick="HandlePermanentDelete">
                     <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Permanent Deletion
+                </button>
+            }
+            @* Revised flow: Admin reviews the vertical's reply and either sends it back to the vertical
+               (Admin Submitted) or marks the point Admin Recommended (completed). This sits in this branch
+               because Admin users (Vertical login) are caught here; the old Admin button further down was unreachable. *@
+            @if (currentUserRole == "Admin" && currentRcmPoint.Status == "Management Submitted")
+            {
+                <button type="button" class="btn btn-primary" @onclick="HandleAdminSubmit">
+                    <i class="bi bi-reply me-2"></i>Send Back to Vertical
+                </button>
+                <button type="button" class="btn btn-success" @onclick="HandleAdminRecommend">
+                    <i class="bi bi-patch-check me-2"></i>Mark as Admin Recommended
                 </button>
             }
         }
@@ -667,12 +738,6 @@
             {
                 <button type="button" class="btn btn-primary" @onclick="HandleManagementSubmit">
                     <i class="bi bi-send me-2"></i>Submit Reply
-                </button>
-            }
-            @if (currentUserRole == "Admin" && currentRcmPoint.Status == "Management Submitted")
-            {
-                <button type="button" class="btn btn-success" @onclick="HandleAdminSubmit">
-                    <i class="bi bi-check2-all me-2"></i>Submit Admin Reply
                 </button>
             }
         }
@@ -702,6 +767,27 @@
     private bool isLoading = false;
     private string? searchTerm;
     private List<VerticalMaster>? controlDepartmentOptions;
+
+    // --- Status visibility / filter ---
+    // Consultants (Maker/Checker) and Admin can see points in every status, read-only
+    // unless they are allowed to act on it. Vertical users see points from the
+    // verification stage onwards (plus Submitted, as before).
+    private static readonly string[] AllStatuses =
+    {
+        "Saved", "Submitted", "Rejected", "Verified", "Management Submitted",
+        "Admin Submitted", "Admin Recommended", "Submitted for Deletion"
+    };
+    private static readonly string[] VerticalVisibleStatuses =
+    {
+        "Submitted", "Verified", "Management Submitted", "Admin Submitted", "Admin Recommended"
+    };
+    private string selectedStatusFilter = "";
+
+    // null = every status
+    private string[]? RoleVisibleStatuses =>
+        (currentUserLoginType == "Vertical" && currentUserRole == "Vertical") ? VerticalVisibleStatuses : null;
+
+    private IEnumerable<string> StatusFilterOptions => RoleVisibleStatuses ?? AllStatuses;
 
     // --- Cascading Dropdown State ---
 
@@ -813,21 +899,17 @@
         isLoading = true;
         StateHasChanged();
 
-        // --- NEW LOGIC: Determine status filter based on role ---
+        // Status filter: the user's chosen status if any (always one the role may see),
+        // otherwise everything the role is allowed to see (null = all statuses).
         string? statusFilter = null;
-        if (currentUserLoginType == "Consultant" && currentUserRole == "Maker")
+        if (!string.IsNullOrEmpty(selectedStatusFilter) && StatusFilterOptions.Contains(selectedStatusFilter))
         {
-            statusFilter = "Saved,Rejected";
+            statusFilter = selectedStatusFilter;
         }
-        else if (currentUserLoginType == "Consultant" && currentUserRole == "Checker")
+        else if (RoleVisibleStatuses != null)
         {
-            statusFilter = "Submitted,Submitted for Deletion,Admin Submitted";
+            statusFilter = string.Join(",", RoleVisibleStatuses);
         }
-        else if (currentUserLoginType == "Vertical" && currentUserRole == "Vertical") // Role is 'Vertical' for non-admin vertical users
-        {
-            statusFilter = "Verified,Admin Submitted,Submitted";
-        }
-        // For Admin (currentUserRole == "Admin"), statusFilter remains null to fetch all.
 
         try
         {
@@ -858,6 +940,13 @@
     private async Task OnPageChanged(int newPage)
     {
         await LoadRcmPoints(newPage);
+    }
+
+    private async Task OnStatusFilterChanged(ChangeEventArgs e)
+    {
+        selectedStatusFilter = e.Value?.ToString() ?? "";
+        currentPage = 1;
+        await LoadRcmPoints(currentPage);
     }
 
     // Debounced so we don't hit the DB on every keystroke - waits 400ms
@@ -928,9 +1017,10 @@
         isModalVisible = true;
     }
 
-    // NEW (Point 2): statuses a Checker is allowed to edit - same set they can already view/action
+    // Statuses a Checker is allowed to edit. Once a point is Verified (and during the Vertical/Admin
+    // conversation) nobody on the Consultant side can change it - they can only view it.
     private static bool IsCheckerEditableStatus(string? status) =>
-        status == "Submitted" || status == "Submitted for Deletion" || status == "Admin Submitted";
+        status == "Submitted" || status == "Submitted for Deletion";
 
     private void CloseModal() 
     { 
@@ -1110,6 +1200,8 @@
     }
     private async Task HandleManagementSubmit()
     {
+        // Only the vertical, and only when it is their turn (Verified or Admin Submitted)
+        if (!CanVerticalReply) return;
         if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrWhiteSpace(currentRcmPoint.ManagementReply))
         {
             statusMessage = "Management Reply cannot be empty.";
@@ -1136,6 +1228,8 @@
 
     private async Task HandleAdminSubmit()
     {
+        // Admin sends the point back to the vertical for another response (-> Admin Submitted)
+        if (currentUserRole != "Admin" || currentRcmPoint.Status != "Management Submitted") return;
         if (string.IsNullOrEmpty(currentUserId) || string.IsNullOrWhiteSpace(currentRcmPoint.AdminReply))
         {
             statusMessage = "Admin Reply cannot be empty.";
@@ -1159,6 +1253,61 @@
             statusMessage = $"Error: {ex.Message}";
         }
     }
+    // Admin is satisfied with the management reply: the point is complete and no longer goes back to the vertical.
+    private async Task HandleAdminRecommend()
+    {
+        if (currentUserRole != "Admin" || currentRcmPoint.Status != "Management Submitted") return;
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        if (!await JSRuntime.InvokeAsync<bool>("confirm",
+                "Mark this point as 'Admin Recommended'? It will be treated as completed and will not go back to the vertical for another response."))
+        {
+            return;
+        }
+
+        statusMessage = "Updating...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.AdminRecommendPointAsync(currentRcmPoint.SqNo, currentRcmPoint.AdminReply, currentUserId);
+            await JSRuntime.InvokeVoidAsync("alert", "Point marked as Admin Recommended.");
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+    }
+
+    // Checker declines a deletion request: the point goes back to the status it had before.
+    private async Task HandleDeclineDeletion()
+    {
+        if (currentUserRole != "Checker" || currentRcmPoint.Status != "Submitted for Deletion") return;
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        if (!await JSRuntime.InvokeAsync<bool>("confirm", "Decline this deletion request? The point will be restored to its previous status."))
+        {
+            return;
+        }
+
+        statusMessage = "Restoring...";
+        statusMessageCssClass = "alert alert-info";
+        try
+        {
+            await DbService.DeclineRcmPointDeletionAsync(currentRcmPoint.SqNo, currentUserId);
+            await JSRuntime.InvokeVoidAsync("alert", "Deletion request declined. The point has been restored.");
+            CloseModal();
+            await LoadRcmPoints(currentPage);
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Error: {ex.Message}";
+            statusMessageCssClass = "alert alert-danger";
+        }
+    }
+
     private async Task HandleDeleteRequest(RcmPointsMaster point)
     {
         if (string.IsNullOrEmpty(currentUserId)) return;
@@ -1168,7 +1317,7 @@
         {
             try
             {
-                await DbService.SetRcmPointStatusAsync(point.SqNo, "Submitted for Deletion", currentUserId);
+                await DbService.RequestRcmPointDeletionAsync(point.SqNo, currentUserId);
                 await LoadRcmPoints(currentPage); // Refresh the grid
             }
             catch (Exception ex)
@@ -1334,6 +1483,9 @@
             "Submitted" => "bg-primary",
             "Verified" => "bg-success",
             "Rejected" => "bg-danger",
+            "Management Submitted" => "bg-warning text-dark",
+            "Admin Submitted" => "bg-info text-dark",
+            "Admin Recommended" => "bg-dark",
             _ => "bg-light text-dark"
         };
     }
@@ -1427,6 +1579,23 @@
             StateHasChanged();
         }
     }
+    // Whose turn is it? Only that person can type in their reply box.
+    private bool CanVerticalReply =>
+        currentUserLoginType == "Vertical" && currentUserRole == "Vertical"
+        && (currentRcmPoint.Status == "Verified" || currentRcmPoint.Status == "Admin Submitted");
+
+    private bool CanAdminReply =>
+        currentUserLoginType == "Vertical" && currentUserRole == "Admin"
+        && currentRcmPoint.Status == "Management Submitted";
+
+    // Maker: only their own drafts/rejected points. Admin: any point not already waiting for deletion.
+    private bool CanRequestDeletion(RcmPointsMaster point)
+    {
+        if (point.Status == "Submitted for Deletion") return false;
+        if (currentUserRole == "Admin") return true;
+        return currentUserRole == "Maker" && (point.Status == "Saved" || point.Status == "Rejected");
+    }
+
     private bool IsEditButtonDisabled(RcmPointsMaster point)
     {
         if (currentUserLoginType == "Consultant")
