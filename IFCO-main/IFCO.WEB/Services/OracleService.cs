@@ -1706,6 +1706,196 @@ namespace IFCO.WEB.Services
             }
         }
         #endregion
+
+        #region Audit Trail and Alerts (RCM_AUDIT_PKG)
+
+        // Full status history of one point, oldest first.
+        public async Task<List<PointHistoryEntry>> GetPointHistoryAsync(int sqNo)
+        {
+            var list = new List<PointHistoryEntry>();
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.get_point_history", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_sq_no", OracleDbType.Int32, sqNo, ParameterDirection.Input);
+                        command.Parameters.Add("p_result_cursor", OracleDbType.RefCursor, ParameterDirection.Output);
+                        await command.ExecuteNonQueryAsync();
+
+                        using (var reader = ((OracleRefCursor)command.Parameters["p_result_cursor"].Value).GetDataReader())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                list.Add(new PointHistoryEntry
+                                {
+                                    HistoryId = Convert.ToInt32(reader["HISTORY_ID"]),
+                                    EventType = reader["EVENT_TYPE"]?.ToString() ?? "",
+                                    FromStatus = reader.IsDBNull(reader.GetOrdinal("FROM_STATUS")) ? null : reader["FROM_STATUS"].ToString(),
+                                    ToStatus = reader.IsDBNull(reader.GetOrdinal("TO_STATUS")) ? null : reader["TO_STATUS"].ToString(),
+                                    ActedBy = reader.IsDBNull(reader.GetOrdinal("ACTED_BY")) ? null : reader["ACTED_BY"].ToString(),
+                                    ActedByName = reader.IsDBNull(reader.GetOrdinal("ACTED_BY_NAME")) ? null : reader["ACTED_BY_NAME"].ToString(),
+                                    ActedByRole = reader.IsDBNull(reader.GetOrdinal("ACTED_BY_ROLE")) ? null : reader["ACTED_BY_ROLE"].ToString(),
+                                    ActedDate = reader.GetDateTime(reader.GetOrdinal("ACTED_DATE")),
+                                    Remarks = reader.IsDBNull(reader.GetOrdinal("REMARKS")) ? null : reader["REMARKS"].ToString()
+                                });
+                            }
+                        }
+                    }
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method GetPointHistoryAsync for SQ_NO {sqNo}", sqNo);
+                throw;
+            }
+        }
+
+        // Written by the app for events the database cannot see on its own (permanent deletion).
+        public async Task LogPointEventAsync(int sqNo, string eventType, string actedBy, string? remarks)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.log_manual_event", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_sq_no", OracleDbType.Int32, sqNo, ParameterDirection.Input);
+                        command.Parameters.Add("p_event", OracleDbType.NVarchar2, eventType, ParameterDirection.Input);
+                        command.Parameters.Add("p_by", OracleDbType.NVarchar2, actedBy, ParameterDirection.Input);
+                        command.Parameters.Add("p_remarks", OracleDbType.NVarchar2, string.IsNullOrWhiteSpace(remarks) ? (object)DBNull.Value : remarks, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // History is best-effort: never fail the user's action because of it
+                _logger.LogError(ex, "Error during calling method LogPointEventAsync for SQ_NO {sqNo}", sqNo);
+            }
+        }
+
+        // recipientType is the LoginType claim: "Consultant" or "Vertical"
+        public async Task<List<NotificationItem>> GetNotificationsAsync(string recipientId, string recipientType, int limit = 20)
+        {
+            var list = new List<NotificationItem>();
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.get_notifications", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_recipient_id", OracleDbType.NVarchar2, recipientId, ParameterDirection.Input);
+                        command.Parameters.Add("p_recipient_type", OracleDbType.NVarchar2, recipientType, ParameterDirection.Input);
+                        command.Parameters.Add("p_limit", OracleDbType.Int32, limit, ParameterDirection.Input);
+                        command.Parameters.Add("p_result_cursor", OracleDbType.RefCursor, ParameterDirection.Output);
+                        await command.ExecuteNonQueryAsync();
+
+                        using (var reader = ((OracleRefCursor)command.Parameters["p_result_cursor"].Value).GetDataReader())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                list.Add(new NotificationItem
+                                {
+                                    NotificationId = Convert.ToInt32(reader["NOTIFICATION_ID"]),
+                                    RcmPointSqNo = reader.IsDBNull(reader.GetOrdinal("RCM_POINT_SQ_NO")) ? null : Convert.ToInt32(reader["RCM_POINT_SQ_NO"]),
+                                    Message = reader["MESSAGE"]?.ToString() ?? "",
+                                    IsRead = Convert.ToInt32(reader["IS_READ"]) == 1,
+                                    CreatedDate = reader.GetDateTime(reader.GetOrdinal("CREATED_DATE"))
+                                });
+                            }
+                        }
+                    }
+                }
+                return list;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method GetNotificationsAsync");
+                throw;
+            }
+        }
+
+        public async Task<int> GetUnreadNotificationCountAsync(string recipientId, string recipientType)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.get_unread_count", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_recipient_id", OracleDbType.NVarchar2, recipientId, ParameterDirection.Input);
+                        command.Parameters.Add("p_recipient_type", OracleDbType.NVarchar2, recipientType, ParameterDirection.Input);
+                        command.Parameters.Add("p_count", OracleDbType.Int32, ParameterDirection.Output);
+                        await command.ExecuteNonQueryAsync();
+
+                        return command.Parameters["p_count"].Value is OracleDecimal d && !d.IsNull ? d.ToInt32() : 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method GetUnreadNotificationCountAsync");
+                throw;
+            }
+        }
+
+        public async Task MarkNotificationReadAsync(int notificationId, string recipientId, string recipientType)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.mark_notification_read", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_notification_id", OracleDbType.Int32, notificationId, ParameterDirection.Input);
+                        command.Parameters.Add("p_recipient_id", OracleDbType.NVarchar2, recipientId, ParameterDirection.Input);
+                        command.Parameters.Add("p_recipient_type", OracleDbType.NVarchar2, recipientType, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method MarkNotificationReadAsync");
+                throw;
+            }
+        }
+
+        public async Task MarkAllNotificationsReadAsync(string recipientId, string recipientType)
+        {
+            try
+            {
+                using (var connection = new OracleConnection(_connectionString))
+                {
+                    await connection.OpenAsync();
+                    using (var command = new OracleCommand("IFCO.RCM_AUDIT_PKG.mark_all_read", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add("p_recipient_id", OracleDbType.NVarchar2, recipientId, ParameterDirection.Input);
+                        command.Parameters.Add("p_recipient_type", OracleDbType.NVarchar2, recipientType, ParameterDirection.Input);
+                        await command.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during calling method MarkAllNotificationsReadAsync");
+                throw;
+            }
+        }
+        #endregion
         #region Report Generation
         public async Task<List<VerticalDropdownItem>> GetActiveVerticalsAsync()
         {

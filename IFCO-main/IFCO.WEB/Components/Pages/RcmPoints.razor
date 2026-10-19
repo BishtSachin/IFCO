@@ -568,6 +568,68 @@
                                             <label class="form-label">Admin Reply</label>
                                             <textarea class="form-control" rows="3" readonly>@currentRcmPoint.AdminReply</textarea>
                                         </div>
+
+                                        @* Audit trail: every create / status change / edit, oldest first *@
+                                        <h6 class="mt-4 mb-2"><i class="bi bi-clock-history me-1"></i>Status History</h6>
+                                        @if (pointHistory == null)
+                                        {
+                                            <p class="text-muted small mb-0"><em>Loading history...</em></p>
+                                        }
+                                        else if (!pointHistory.Any())
+                                        {
+                                            <p class="text-muted small mb-0">No history recorded for this point.</p>
+                                        }
+                                        else
+                                        {
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered align-middle mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th style="width:150px">Date</th>
+                                                            <th>Event</th>
+                                                            <th style="width:200px">By</th>
+                                                            <th>Remarks</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var h in pointHistory)
+                                                        {
+                                                            <tr>
+                                                                <td class="text-nowrap small">@h.ActedDate.ToString("dd-MMM-yyyy hh:mm tt")</td>
+                                                                <td>
+                                                                    @if (h.EventType == "Status Change")
+                                                                    {
+                                                                        <span class="badge @GetStatusBadgeClass(h.FromStatus)">@h.FromStatus</span>
+                                                                        <i class="bi bi-arrow-right mx-1"></i>
+                                                                        <span class="badge @GetStatusBadgeClass(h.ToStatus)">@h.ToStatus</span>
+                                                                    }
+                                                                    else if (h.EventType == "Edited")
+                                                                    {
+                                                                        <span>Edited</span> <span class="text-muted small">(@h.ToStatus)</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span>@h.EventType</span>
+                                                                        @if (!string.IsNullOrEmpty(h.ToStatus))
+                                                                        {
+                                                                            <span class="badge @GetStatusBadgeClass(h.ToStatus) ms-1">@h.ToStatus</span>
+                                                                        }
+                                                                    }
+                                                                </td>
+                                                                <td class="small">
+                                                                    @(string.IsNullOrWhiteSpace(h.ActedByName) ? h.ActedBy : h.ActedByName)
+                                                                    @if (!string.IsNullOrWhiteSpace(h.ActedByRole))
+                                                                    {
+                                                                        <span class="text-muted">(@h.ActedByRole)</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="small" style="white-space:pre-wrap">@h.Remarks</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -771,7 +833,7 @@
     // --- Status visibility / filter ---
     // Consultants (Maker/Checker) and Admin can see points in every status, read-only
     // unless they are allowed to act on it. Vertical users see points from the
-    // verification stage onwards (plus Submitted, as before).
+    // verification stage onwards - Submitted points are not shown to them.
     private static readonly string[] AllStatuses =
     {
         "Saved", "Submitted", "Rejected", "Verified", "Management Submitted",
@@ -779,7 +841,7 @@
     };
     private static readonly string[] VerticalVisibleStatuses =
     {
-        "Submitted", "Verified", "Management Submitted", "Admin Submitted", "Admin Recommended"
+        "Verified", "Management Submitted", "Admin Submitted", "Admin Recommended"
     };
     private string selectedStatusFilter = "";
 
@@ -824,6 +886,8 @@
     private bool isAddingNew;
     private string modalTitle = "";
     private RcmPointsMaster currentRcmPoint = new();
+    // Audit trail shown in Section 10 (null = still loading)
+    private List<PointHistoryEntry>? pointHistory;
     private EditForm? pointForm;
     private string? statusMessage;
     private string statusMessageCssClass = "";
@@ -1013,6 +1077,15 @@
             currentRcmPoint = await DbService.GetRcmPointByIdAsync(point.SqNo);
             checkerRemarksInput = currentRcmPoint.CheckerRemarks ?? "";
             await LoadAttachments();
+
+            // Audit trail is shown only in Section 10 (Consultant / Admin). A failure here
+            // must never stop the point from opening.
+            pointHistory = null;
+            if (currentUserLoginType == "Consultant" || currentUserRole == "Admin")
+            {
+                try { pointHistory = await DbService.GetPointHistoryAsync(point.SqNo); }
+                catch { pointHistory = new List<PointHistoryEntry>(); }
+            }
         }
         isModalVisible = true;
     }
@@ -1338,7 +1411,12 @@
             statusMessageCssClass = "alert alert-info";
             try
             {
-                await DbService.DeleteRcmPointAsync(currentRcmPoint.SqNo);
+                var deletedSqNo = currentRcmPoint.SqNo;
+                var deletedStatus = currentRcmPoint.Status;
+                await DbService.DeleteRcmPointAsync(deletedSqNo);
+                // Keep a permanent record: the history table is not removed with the point
+                await DbService.LogPointEventAsync(deletedSqNo, "Permanently Deleted", currentUserId,
+                    $"Point permanently deleted (status before deletion: {deletedStatus}).");
                 statusMessage = "Point permanently deleted.";
                 statusMessageCssClass = "alert alert-success";
                 await Task.Delay(1500);

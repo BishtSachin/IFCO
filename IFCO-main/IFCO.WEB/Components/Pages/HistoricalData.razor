@@ -5,7 +5,7 @@
 @inject OracleService DbService
 @inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Maker,Checker")]
 
 <h3>Historical Data</h3>
 <p class="text-muted">Read-only view of archived RCM Points for past financial years and quarters - for reference, reporting, audit, and compliance.</p>

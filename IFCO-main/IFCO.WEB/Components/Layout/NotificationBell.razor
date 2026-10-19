@@ -1,0 +1,151 @@
+﻿@using System.Security.Claims
+@using IFCO.WEB.Models
+@using IFCO.WEB.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@rendermode InteractiveServer
+@implements IDisposable
+@inject OracleService DbService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
+
+@* In-app alerts: bell with unread count in the top bar. Checks for new alerts every 30 seconds. *@
+@if (!string.IsNullOrEmpty(recipientId))
+{
+    <span class="bell-wrapper">
+        <button type="button" class="bell-button" title="Alerts" @onclick="ToggleOpen">
+            <i class="bi @(unreadCount > 0 ? "bi-bell-fill" : "bi-bell")"></i>
+            @if (unreadCount > 0)
+            {
+                <span class="bell-badge">@(unreadCount > 99 ? "99+" : unreadCount.ToString())</span>
+            }
+        </button>
+
+        @if (isOpen)
+        {
+            <div class="bell-backdrop" @onclick="Close"></div>
+            <div class="bell-panel shadow">
+                <div class="bell-panel-header">
+                    <strong>Alerts</strong>
+                    @if (unreadCount > 0)
+                    {
+                        <button type="button" class="bell-link" @onclick="MarkAllRead">Mark all as read</button>
+                    }
+                </div>
+                <div class="bell-panel-body">
+                    @if (items == null)
+                    {
+                        <div class="bell-empty">Loading...</div>
+                    }
+                    else if (!items.Any())
+                    {
+                        <div class="bell-empty">No alerts yet.</div>
+                    }
+                    else
+                    {
+                        @foreach (var n in items)
+                        {
+                            var item = n;
+                            <button type="button" class="bell-item @(item.IsRead ? "" : "unread")" @onclick="() => OpenItem(item)">
+                                <div class="bell-item-msg">@item.Message</div>
+                                <div class="bell-item-time">@FormatTime(item.CreatedDate)</div>
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </span>
+}
+
+@code {
+    private string? recipientId;
+    private string? recipientType;
+    private int unreadCount;
+    private bool isOpen;
+    private List<NotificationItem>? items;
+    private System.Threading.Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthStateProvider.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated != true) return;
+
+        recipientId = user.Identity.Name;
+        recipientType = user.FindFirstValue("LoginType");
+        if (string.IsNullOrEmpty(recipientId) || string.IsNullOrEmpty(recipientType))
+        {
+            recipientId = null;
+            return;
+        }
+
+        await RefreshCount();
+        timer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshCount();
+                    if (isOpen) await LoadItems();
+                    StateHasChanged();
+                });
+            }
+            catch { /* circuit already closed */ }
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task RefreshCount()
+    {
+        try { unreadCount = await DbService.GetUnreadNotificationCountAsync(recipientId!, recipientType!); }
+        catch { /* alerts are best-effort; never break the page */ }
+    }
+
+    private async Task LoadItems()
+    {
+        try { items = await DbService.GetNotificationsAsync(recipientId!, recipientType!, 20); }
+        catch { items = new List<NotificationItem>(); }
+    }
+
+    private async Task ToggleOpen()
+    {
+        isOpen = !isOpen;
+        if (isOpen)
+        {
+            items = null;
+            await RefreshCount();
+            await LoadItems();
+        }
+    }
+
+    private void Close() => isOpen = false;
+
+    private async Task OpenItem(NotificationItem n)
+    {
+        if (!n.IsRead)
+        {
+            try { await DbService.MarkNotificationReadAsync(n.NotificationId, recipientId!, recipientType!); } catch { }
+            n.IsRead = true;
+            if (unreadCount > 0) unreadCount--;
+        }
+        isOpen = false;
+        NavManager.NavigateTo("rcm-points");
+    }
+
+    private async Task MarkAllRead()
+    {
+        try { await DbService.MarkAllNotificationsReadAsync(recipientId!, recipientType!); } catch { }
+        unreadCount = 0;
+        if (items != null) foreach (var n in items) n.IsRead = true;
+    }
+
+    private static string FormatTime(DateTime t)
+    {
+        var span = DateTime.Now - t;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} min ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours} hr ago";
+        return t.ToString("dd-MMM-yyyy hh:mm tt");
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

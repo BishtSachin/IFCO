@@ -22,6 +22,7 @@
             <AuthorizeView>
                 <Authorized>
                     <div class="user-info">
+                        <NotificationBell />
                         <span>Hello, @context.User.FindFirst("DisplayName")?.Value</span>
                         <a href="api/auth/logout">Logout</a>
                     </div>
