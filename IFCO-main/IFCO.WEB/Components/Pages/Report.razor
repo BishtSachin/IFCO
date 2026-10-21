@@ -122,6 +122,12 @@
     private Task<AuthenticationState> AuthenticationStateTask { get; set; }
 
     private bool isVerticalUser = false;
+
+    // Vertical users (non-admin) only get points from the verification stage onwards,
+    // the same statuses they can see on the RCM Points page. Everyone else: no limit.
+    private static readonly string[] VerticalReportStatuses =
+        { "Verified", "Management Submitted", "Admin Submitted", "Admin Recommended" };
+    private IReadOnlyCollection<string>? ReportStatusLimit => isVerticalUser ? VerticalReportStatuses : null;
     private string? userVerticalIdClaim;
 
     // Sentinel value for the pinned "All ..." dropdown entries. Never a real ID.
@@ -244,7 +250,7 @@
             if (consolidatedRcmIds != null)
             {
                 // get_report_by_rcm_list already accepts a comma-separated list of RCM numbers
-                fileBytes = await DbService.GenerateReportExcelAsync("RCM", null, consolidatedRcmIds);
+                fileBytes = await DbService.GenerateReportExcelAsync("RCM", null, consolidatedRcmIds, ReportStatusLimit);
             }
             else if (isAll)
             {
@@ -257,14 +263,15 @@
                     : (rcmList ?? new()).Where(r => r.RcmSqNo != AllValue)
                           .Select(r => (r.RcmSqNo, r.RcmName)).ToList();
 
-                fileBytes = await DbService.GenerateAllReportExcelAsync(selectedReportType, targets);
+                fileBytes = await DbService.GenerateAllReportExcelAsync(selectedReportType, targets, ReportStatusLimit);
             }
             else
             {
                 fileBytes = await DbService.GenerateReportExcelAsync(
                     selectedReportType,
                     selectedVerticalId,
-                    selectedRcmId
+                    selectedRcmId,
+                    ReportStatusLimit
                 );
             }
 

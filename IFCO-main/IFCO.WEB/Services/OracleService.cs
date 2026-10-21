@@ -1958,7 +1958,7 @@ namespace IFCO.WEB.Services
         // 'Submitted for Deletion' (soft-deleted) points. Custom Dates was
         // retired - historical/period-based reporting now lives in
         // Historical Data instead.
-        public async Task<byte[]> GenerateReportExcelAsync(string reportType, string? verticalId, string? rcmId)
+        public async Task<byte[]> GenerateReportExcelAsync(string reportType, string? verticalId, string? rcmId, IReadOnlyCollection<string>? allowedStatuses = null)
         {
             using (var conn = new OracleConnection(_connectionString))
             {
@@ -1990,6 +1990,7 @@ namespace IFCO.WEB.Services
                     {
                         adapter.Fill(dt);
                     }
+                    KeepOnlyStatuses(dt, allowedStatuses);
                     ExcelExportHelper.SanitizeDateColumns(dt);
 
                     // Convert DataTable to Excel (XLSX) using ClosedXML
@@ -2016,7 +2017,7 @@ namespace IFCO.WEB.Services
         // the quarter scoping and status rules stay identical.
         // Targets with no rows in the current quarter are skipped; if nothing
         // at all is found, a single "No Data" sheet is returned.
-        public async Task<byte[]> GenerateAllReportExcelAsync(string reportType, IReadOnlyList<(string Id, string Name)> targets)
+        public async Task<byte[]> GenerateAllReportExcelAsync(string reportType, IReadOnlyList<(string Id, string Name)> targets, IReadOnlyCollection<string>? allowedStatuses = null)
         {
             using (var conn = new OracleConnection(_connectionString))
             {
@@ -2050,6 +2051,7 @@ namespace IFCO.WEB.Services
                             {
                                 adapter.Fill(dt);
                             }
+                            KeepOnlyStatuses(dt, allowedStatuses);
                             if (dt.Rows.Count == 0) continue;
 
                             ExcelExportHelper.SanitizeDateColumns(dt);
@@ -2072,6 +2074,23 @@ namespace IFCO.WEB.Services
                         workbook.SaveAs(stream);
                         return stream.ToArray();
                     }
+                }
+            }
+        }
+
+        // Report status limit: when allowedStatuses is given (Vertical users), rows whose
+        // STATUS is not in the list are removed before the Excel file is built.
+        // The report procedures return the point's STATUS column, so no DB change is needed.
+        private static void KeepOnlyStatuses(DataTable dt, IReadOnlyCollection<string>? allowedStatuses)
+        {
+            if (allowedStatuses == null || !dt.Columns.Contains("STATUS")) return;
+
+            for (int i = dt.Rows.Count - 1; i >= 0; i--)
+            {
+                var status = dt.Rows[i]["STATUS"]?.ToString();
+                if (status == null || !allowedStatuses.Contains(status))
+                {
+                    dt.Rows.RemoveAt(i);
                 }
             }
         }
