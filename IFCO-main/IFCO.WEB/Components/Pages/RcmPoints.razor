@@ -15,6 +15,14 @@
 
 <PageTitle>RCM Points Master</PageTitle>
 
+@if (!string.IsNullOrEmpty(linkMessage))
+{
+    <div class="alert alert-warning alert-dismissible" role="alert">
+        @linkMessage
+        <button type="button" class="btn-close" aria-label="Close" @onclick="() => linkMessage = null"></button>
+    </div>
+}
+
 <div class="card shadow-sm mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">RCM Point Configuration</h5>
@@ -904,6 +912,56 @@
     private readonly Dictionary<string, int> controlTypeOptions = new() { { "No Control", 0 }, { "Detective", 1 }, { "Preventive", 2 } };
     private readonly Dictionary<string, int> automationOptions = new() { { "No Control", 0 }, { "Manual", 1 }, { "Partially Automated", 2 }, { "Fully Automated", 3 } };
     private readonly List<string> frequencyOptions = new() { "Event Based", "Daily", "Weekly", "Monthly", "Quarterly", "Semi-annually", "Annually" };
+
+    // --- Deep link from an alert: /rcm-points?point=<number> ---
+    [SupplyParameterFromQuery(Name = "point")]
+    public int? PointId { get; set; }
+    private int lastOpenedPointId;
+    private string? linkMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Runs after OnInitializedAsync (so the user's RCM list is loaded) and again whenever
+        // the address changes while this page is already open (alert clicked on this page).
+        if (!PointId.HasValue || PointId.Value <= 0)
+        {
+            lastOpenedPointId = 0;
+            return;
+        }
+        if (PointId.Value == lastOpenedPointId || rcmsForDropdown == null) return;
+
+        lastOpenedPointId = PointId.Value;
+        await OpenPointFromLinkAsync(PointId.Value);
+    }
+
+    private async Task OpenPointFromLinkAsync(int sqNo)
+    {
+        linkMessage = null;
+
+        RcmPointsMaster? point;
+        try { point = await DbService.GetRcmPointByIdAsync(sqNo); }
+        catch { point = null; }
+
+        if (point == null)
+        {
+            linkMessage = "This RCM point is no longer available (it may have been deleted).";
+        }
+        // Same access rules as the list: the point's RCM must be one of the user's RCMs, and
+        // non-admin Vertical users only see the statuses allowed for them.
+        else if (rcmsForDropdown == null || !rcmsForDropdown.Any(r => r.SqNo == point.RcmSqNo)
+                 || (RoleVisibleStatuses != null && !RoleVisibleStatuses.Contains(point.Status ?? "")))
+        {
+            linkMessage = "This RCM point is not available to you.";
+        }
+        else
+        {
+            SelectedRcmSqNo = point.RcmSqNo;   // show that RCM's list behind the form
+            await OpenModal(point, viewMode: IsEditButtonDisabled(point));
+        }
+
+        // Drop ?point= from the address so clicking the same alert again works
+        NavigationManager.NavigateTo("rcm-points", replace: true);
+    }
 
     protected override async Task OnInitializedAsync()
     {

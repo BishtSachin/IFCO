@@ -128,7 +128,8 @@
             if (unreadCount > 0) unreadCount--;
         }
         isOpen = false;
-        NavManager.NavigateTo("rcm-points");
+        // Open the exact point (RCM Points page reads ?point=<number>)
+        NavManager.NavigateTo(n.RcmPointSqNo.HasValue ? $"rcm-points?point={n.RcmPointSqNo.Value}" : "rcm-points");
     }
 
     private async Task MarkAllRead()
