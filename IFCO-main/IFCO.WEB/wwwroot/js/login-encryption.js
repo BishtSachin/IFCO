@@ -83,10 +83,19 @@ async function performEncryptedLogin(loginType, userId, captchaQuestion, captcha
 
         if (!encryptedValue) throw new Error('Encryption failed.');
 
+        const csrfToken = await getCsrfToken();
+
         const response = await fetch('api/auth/login', {
             method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken },
             body: formData
         });
+
+        // A rejected security token comes back as a plain 400 (no redirect)
+        if (!response.redirected && !response.ok) {
+            alert('Your page session expired. Please refresh the page and try again.');
+            return;
+        }
 
         if (response.redirected || response.url) {
             window.location.href = response.url;
@@ -96,6 +105,14 @@ async function performEncryptedLogin(loginType, userId, captchaQuestion, captcha
         console.error('Login error:', error);
         alert('An error occurred. Please try again.');
     }
+}
+
+// Anti-forgery token for the POST requests below (validated by AuthController)
+async function getCsrfToken() {
+    const response = await fetch('api/auth/csrf-token', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Could not fetch security token.');
+    const data = await response.json();
+    return data.token;
 }
 
 async function performOtpVerify(userId) {
@@ -110,10 +127,18 @@ async function performOtpVerify(userId) {
         formData.append('UserId', userId);
         formData.append('UserOtp', otpInput.value);
 
+        const csrfToken = await getCsrfToken();
+
         const response = await fetch('api/auth/verify-otp', {
             method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken },
             body: formData
         });
+
+        if (!response.redirected && !response.ok) {
+            alert('Your page session expired. Please refresh the page and try again.');
+            return;
+        }
 
         if (response.redirected || response.url) {
             window.location.href = response.url;

@@ -38,7 +38,25 @@ try
             options.LogoutPath = "/api/auth/logout";
             options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
             options.SlidingExpiration = true;
+            // Explicit cookie hardening. Lax keeps the SSO redirect from MyDiary working.
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+                ? CookieSecurePolicy.SameAsRequest
+                : CookieSecurePolicy.Always;
         });
+
+    // Anti-forgery for the login / OTP posts (token is sent in the X-CSRF-TOKEN header)
+    builder.Services.AddAntiforgery(options =>
+    {
+        options.HeaderName = "X-CSRF-TOKEN";
+        options.Cookie.Name = "IFCO.Antiforgery";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+    });
 
     builder.Services.AddAuthorization();
     builder.Services.AddCascadingAuthenticationState();
@@ -73,7 +91,7 @@ try
     builder.Services.AddScoped<OracleService>();
     builder.Services.AddScoped<ApiClientService>();
     builder.Services.AddSingleton<RsaKeyService>();
-    builder.Services.AddSingleton<MyDiaryCryptoService>();
+    builder.Services.AddSingleton<CryptoServiceClient>();
     builder.Services.Configure<ApiSettings>(apiSettingsSection);
 
     var app = builder.Build();

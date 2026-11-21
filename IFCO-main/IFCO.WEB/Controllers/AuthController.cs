@@ -1,5 +1,6 @@
 ﻿using IFCO.WEB.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -28,17 +29,29 @@ namespace IFCO.WEB.Controllers
         private readonly IMemoryCache _cache; // --- ADD THIS ---
         private const int MaxLoginAttempts = 5; // Allow 5 login attempts...
         private readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(10); // ...within a 10-minute window.
-        private readonly MyDiaryCryptoService _myDiaryCryptoService;
+        private readonly CryptoServiceClient _cryptoServiceClient;
+        private readonly IAntiforgery _antiforgery;
         private readonly ILogger<AuthController> _logger;
-        public AuthController(OracleService dbService, IOptions<ApiSettings> apiSettings, RsaKeyService rsaKeyService, ApiClientService apiClientService, IMemoryCache memoryCache, MyDiaryCryptoService myDiaryCryptoService, ILogger<AuthController> logger)
+        public AuthController(OracleService dbService, IOptions<ApiSettings> apiSettings, RsaKeyService rsaKeyService, ApiClientService apiClientService, IMemoryCache memoryCache, CryptoServiceClient cryptoServiceClient, IAntiforgery antiforgery, ILogger<AuthController> logger)
         {
             _dbService = dbService;
             _apiSettings = apiSettings.Value;
             _rsaKeyService = rsaKeyService;
             _apiClientService = apiClientService;
             _cache = memoryCache;
-            _myDiaryCryptoService = myDiaryCryptoService;
+            _cryptoServiceClient = cryptoServiceClient;
+            _antiforgery = antiforgery;
             _logger = logger;
+        }
+
+        // Anti-forgery token for the login / OTP posts made by wwwroot/js/login-encryption.js.
+        // Sets the anti-forgery cookie and returns the matching request token.
+        [HttpGet("csrf-token")]
+        public IActionResult GetCsrfToken()
+        {
+            var tokens = _antiforgery.GetAndStoreTokens(HttpContext);
+            Response.Headers["Cache-Control"] = "no-store";
+            return Ok(new { token = tokens.RequestToken });
         }
 
         [HttpGet("public-key")]
@@ -86,6 +99,7 @@ namespace IFCO.WEB.Controllers
 
         // --- UPDATED LOGIN METHOD WITH BYPASSES ---
         [HttpPost("login")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login([FromForm] LoginViewModel model)
         {
             // 1. Check Login Attempts (Keep existing logic)
@@ -205,6 +219,7 @@ namespace IFCO.WEB.Controllers
             return LocalRedirect($"~/home");
         }
         [HttpPost("resend-otp")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> ResendOtp([FromForm] ResendOtpViewModel model)
         {
             var sessionKey = $"OTP_{model.UserId}";
@@ -247,6 +262,7 @@ namespace IFCO.WEB.Controllers
         }
 
         [HttpPost("verify-otp")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> VerifyOtp([FromForm] OtpViewModel model)
         {
             var sessionKey = $"OTP_{model.UserId}";
@@ -343,7 +359,8 @@ namespace IFCO.WEB.Controllers
             _logger.LogInformation("Encrypted Token Received. Length: {Length}", data.Length);
             _logger.LogInformation("Attempting Decryption...");
 
-            string decrypted = _myDiaryCryptoService.Decrypt(data);
+            // A '+' in the token can arrive as a space after URL decoding; put it back before decrypting
+            string? decrypted = await _cryptoServiceClient.DecryptAsync(data.Replace(" ", "+"));
 
             if (string.IsNullOrEmpty(decrypted))
             {

@@ -8,5 +8,7 @@
         public string AdApiClientCode { get; set; }
         public bool EnableAuthBypass { get; set; }
         public string MyDiaryUrl { get; set; }
+        // Optional. Central CryptoService decrypt endpoint; a built-in default is used when empty.
+        public string? CryptoDecryptUrl { get; set; }
     }
 }
