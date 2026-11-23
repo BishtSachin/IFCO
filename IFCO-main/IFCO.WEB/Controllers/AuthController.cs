@@ -54,6 +54,23 @@ namespace IFCO.WEB.Controllers
             return Ok(new { token = tokens.RequestToken });
         }
 
+        // Validates the X-CSRF-TOKEN header against the anti-forgery cookie. Done in code instead of the
+        // [ValidateAntiForgeryToken] attribute because this app registers AddControllers(), which does
+        // not include the MVC filter that attribute needs.
+        private async Task<bool> IsAntiforgeryValidAsync()
+        {
+            try
+            {
+                await _antiforgery.ValidateRequestAsync(HttpContext);
+                return true;
+            }
+            catch (AntiforgeryValidationException ex)
+            {
+                _logger.LogWarning("Anti-forgery validation failed: {Message}", ex.Message);
+                return false;
+            }
+        }
+
         [HttpGet("public-key")]
         public IActionResult GetPublicKey()
         {
@@ -99,9 +116,10 @@ namespace IFCO.WEB.Controllers
 
         // --- UPDATED LOGIN METHOD WITH BYPASSES ---
         [HttpPost("login")]
-        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Login([FromForm] LoginViewModel model)
         {
+            if (!await IsAntiforgeryValidAsync()) return BadRequest("Invalid or missing security token.");
+
             // 1. Check Login Attempts (Keep existing logic)
             if (model.LoginType == "Consultant")
             {
@@ -219,9 +237,10 @@ namespace IFCO.WEB.Controllers
             return LocalRedirect($"~/home");
         }
         [HttpPost("resend-otp")]
-        [ValidateAntiForgeryToken]
         public async Task<IActionResult> ResendOtp([FromForm] ResendOtpViewModel model)
         {
+            if (!await IsAntiforgeryValidAsync()) return BadRequest("Invalid or missing security token.");
+
             var sessionKey = $"OTP_{model.UserId}";
             var otpStateJson = HttpContext.Session.GetString(sessionKey);
 
@@ -262,9 +281,10 @@ namespace IFCO.WEB.Controllers
         }
 
         [HttpPost("verify-otp")]
-        [ValidateAntiForgeryToken]
         public async Task<IActionResult> VerifyOtp([FromForm] OtpViewModel model)
         {
+            if (!await IsAntiforgeryValidAsync()) return BadRequest("Invalid or missing security token.");
+
             var sessionKey = $"OTP_{model.UserId}";
             var otpStateJson = HttpContext.Session.GetString(sessionKey);
 
