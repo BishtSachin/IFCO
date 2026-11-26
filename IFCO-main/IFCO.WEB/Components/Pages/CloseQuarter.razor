@@ -171,6 +171,7 @@ else
 
         if (!FileUploadValidator.TryValidate(certificateFile.Name, certificateFile.Size, out var validationError))
         {
+            FileUploadValidator.LogRejected(currentUserId, certificateFile.Name, validationError);
             statusMessage = validationError;
             statusMessageCssClass = "alert alert-danger";
             return;
@@ -192,8 +193,19 @@ else
             using var stream = certificateFile.OpenReadStream(FileUploadValidator.MaxFileSizeBytes);
             using var memoryStream = new MemoryStream();
             await stream.CopyToAsync(memoryStream);
+            var certificateBytes = memoryStream.ToArray();
 
-            var result = await DbService.CloseQuarterAsync(certificateFile.Name, memoryStream.ToArray(), currentUserId);
+            // Server-side content check: real file type (magic bytes) + no active content.
+            if (!FileUploadValidator.TryValidateContent(certificateFile.Name, certificateBytes, out var contentError))
+            {
+                FileUploadValidator.LogRejected(currentUserId, certificateFile.Name, contentError);
+                statusMessage = contentError;
+                statusMessageCssClass = "alert alert-danger";
+                return;
+            }
+
+            var result = await DbService.CloseQuarterAsync(
+                FileUploadValidator.SanitizeFileName(certificateFile.Name), certificateBytes, currentUserId);
 
             statusMessage = $"Quarter closed successfully. {result.PointsArchived} point(s) archived, {result.PointsCarriedForward} carried forward. " +
                              $"Active period is now FY {result.NewFinancialYear}, Quarter {result.NewQuarter}.";

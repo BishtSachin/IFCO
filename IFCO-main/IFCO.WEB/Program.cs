@@ -99,7 +99,10 @@ try
     if (!app.Environment.IsDevelopment())
     {
         app.UseExceptionHandler("/Error", createScopeForErrors: true);
-        app.UseHsts();
+        // HSTS (Strict-Transport-Security) is sent by the IIS / infrastructure layer
+        // (max-age=31536000; includeSubDomains). The app must NOT send it as well - two
+        // Strict-Transport-Security headers in one response is the "Duplicate Security
+        // Headers" PT observation. Do not re-add app.UseHsts() here.
     }
 
     app.UseHttpsRedirection();

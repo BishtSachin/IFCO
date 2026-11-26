@@ -1663,7 +1663,16 @@
 
         if (!FileUploadValidator.TryValidate(file.Name, file.Size, out var validationError))
         {
+            FileUploadValidator.LogRejected(currentUserId, file.Name, validationError);
             await JSRuntime.InvokeVoidAsync("alert", validationError);
+            return;
+        }
+
+        if ((attachedFiles?.Count ?? 0) >= FileUploadValidator.MaxFilesPerPoint)
+        {
+            var limitMessage = $"A maximum of {FileUploadValidator.MaxFilesPerPoint} files can be attached to one point.";
+            FileUploadValidator.LogRejected(currentUserId, file.Name, limitMessage);
+            await JSRuntime.InvokeVoidAsync("alert", limitMessage);
             return;
         }
 
@@ -1674,14 +1683,24 @@
         {
             using var memoryStream = new MemoryStream();
             await file.OpenReadStream(FileUploadValidator.MaxFileSizeBytes).CopyToAsync(memoryStream);
+            var fileBytes = memoryStream.ToArray();
 
+            // Server-side content check: real file type (magic bytes) + no active content.
+            if (!FileUploadValidator.TryValidateContent(file.Name, fileBytes, out var contentError))
+            {
+                FileUploadValidator.LogRejected(currentUserId, file.Name, contentError);
+                await JSRuntime.InvokeVoidAsync("alert", contentError);
+                return;
+            }
+
+            var safeFileName = FileUploadValidator.SanitizeFileName(file.Name);
             var newFile = new RcmPointFilesMaster
             {
                 RcmPointSqNo = currentRcmPoint.SqNo,
-                FileName = file.Name,
-                FileType = file.ContentType,
-                FileSizeBytes = file.Size,
-                FileData = memoryStream.ToArray(),
+                FileName = safeFileName,
+                FileType = FileUploadValidator.GetContentType(safeFileName),   // not the client-supplied type
+                FileSizeBytes = fileBytes.Length,
+                FileData = fileBytes,
                 UploadedBy = currentUserId
             };
 

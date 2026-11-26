@@ -1,4 +1,5 @@
-﻿using IFCO.WEB.Services;
+﻿using IFCO.WEB.Helpers;
+using IFCO.WEB.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,7 +26,9 @@ namespace IFCO.WEB.Controllers
             {
                 return NotFound();
             }
-            return File(file.FileData, file.FileType ?? "application/octet-stream", file.FileName);
+            // Content type comes from the file's extension (not from whatever the browser sent at upload time),
+            // and passing a file name makes ASP.NET send "Content-Disposition: attachment" (forced download).
+            return File(file.FileData, FileUploadValidator.GetContentType(file.FileName), FileUploadValidator.SanitizeFileName(file.FileName));
         }
 
         // NEW (Point 4): download a file that was carried into RCM_POINT_FILES_ARCHIVE
@@ -39,7 +42,9 @@ namespace IFCO.WEB.Controllers
             {
                 return NotFound();
             }
-            return File(file.FileData, file.FileType ?? "application/octet-stream", file.FileName);
+            // Content type comes from the file's extension (not from whatever the browser sent at upload time),
+            // and passing a file name makes ASP.NET send "Content-Disposition: attachment" (forced download).
+            return File(file.FileData, FileUploadValidator.GetContentType(file.FileName), FileUploadValidator.SanitizeFileName(file.FileName));
         }
     }
 }
